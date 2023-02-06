@@ -1,0 +1,199 @@
+$NOLIST
+$MODLP51RC2
+$LIST
+
+$NOLIST
+$include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
+$LIST
+
+$NOLIST
+$include(math32.inc)
+$LIST
+
+;These �EQU� must match the wiring between the microcontroller and ADC
+CLK  EQU 22118400
+BAUD equ 115200
+BRG_VAL equ (0x100-(CLK/(16*BAUD)))
+
+;***Messages To Display*** 
+
+;shortened labels
+STemp:  db 'STmp:', 0
+STime:  db 'STme:', 0
+RTemp:  db 'RTmp:', 0
+RTime:  db 'RTme:', 0
+
+
+;labels for changin parameters
+ReflowTemp:  db 'Reflow Temperature:', 0
+ReflowTime:  db 'Reflow Time:', 0
+SoakTime:  db 'Soak Time:', 0
+SoakTemp:  db 'Soak Temperature:', 0
+colon: db ':',0
+
+;Current State in Oven
+Ramp2Soak: db 'Ramp to Soak' , 0
+Soak: db 'Soak' , 0
+Ramp2Peak: db 'Ramp to Peak' , 0
+Reflow: db 'Reflow' , 0
+Cooling: db 'Cooling' , 0
+
+
+;Button Pin Mapping
+NEXT_STATE_BUTTON   equ P0.6
+PARAM_BUTTON        equ P0.6
+POWER_BUTTON        equ P0.6
+; Reset vector
+org 0x0000
+    ljmp main
+; External interrupt 0 vector (not used in this code)
+org 0x0003
+	reti
+; Timer/Counter 0 overflow interrupt vector
+org 0x000B
+	ljmp Timer0_ISR
+; External interrupt 1 vector (not used in this code)
+org 0x0013
+	reti
+; Timer/Counter 1 overflow interrupt vector (not used in this code)
+org 0x001B
+	reti
+; Serial port receive/transmit interrupt vector (not used in this code)
+org 0x0023 
+	reti	
+; Timer/Counter 2 overflow interrupt vector
+org 0x002B
+	ljmp Timer2_ISR
+
+
+; Place our variables here
+DSEG at 0x30 ; Before the state machine!
+state: ds 1
+Temp_soak: ds 1
+Time_soak: ds 1
+Temp_refl: ds 1
+Time_refl: ds 1
+Run_time_seconds: ds 1
+Run_time_minutes: ds 1
+State_time: ds 1
+
+
+bseg
+
+cseg
+; These 'equ' must match the hardware wiring
+LCD_RS equ P3.2
+;LCD_RW equ PX.X ; Not used in this code, connect the pin to GND
+LCD_E  equ P3.3
+LCD_D4 equ P3.4
+LCD_D5 equ P3.5
+LCD_D6 equ P3.6
+LCD_D7 equ P3.7
+
+;States for oven controller
+;State 0
+    ;Adjustable Parameters that are displayed on LCD
+
+    ;jb BOOT_BUTTON, loop_a  ; if the 'BOOT' button is not pressed skip
+    ;Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
+    ;jb BOOT_BUTTON, loop_a  ; if the 'BOOT' button is not pressed skip
+    ;jnb BOOT_BUTTON,$		; Wait for button release.  The '$' means: jump to same instruction.
+	
+	
+	
+	; A valid press of the 'BOOT' button has been detected, reset the BCD counter.
+	; But first stop timer 2 and reset the milli-seconds counter, to resync everything.
+	;clr TR2                 ; Stop timer 2
+	;clr a
+	;mov Count1ms+0, a
+	;mov Count1ms+1, a
+
+
+;Initial state, Display Parameter Values
+
+initialize_values:
+
+    mov Temp_soak, #0x140 ; Soak Tmp Range is 140-200
+    mov Time_soak, #0x60  ; Range 60-90 seconds
+    mov Temp_refl, #0x220 ; Range 220-250
+    mov Time_refl, #0x30  ; Range 30-60 seconds
+    mov Run_time_seconds, #0x00 ; time starts at 0:00
+    mov Run_time_minutes, #0x00
+
+
+state0:
+
+;***initial parameters displayed***
+
+    Set_Cursor(1, 1)
+    Send_Constant_String(#STemp)
+    Set_Cursor(1, 6)
+	Display_BCD(Temp_soak)
+    
+    Set_Cursor(1,10)
+    Send_Constant_String(#STime)
+    Set_Cursor(1, 15)
+	Display_BCD(Time_soak)
+    
+    Set_Cursor(2,1)
+    Send_Constant_String(#RTemp)
+    Set_Cursor(2, 6)
+	Display_BCD(Temp_refl)
+    
+    Set_Cursor(2,10)
+    Send_Constant_String(#RTime)
+    Set_Cursor(2, 15)
+	Display_BCD(Time_refl)
+
+
+    cjne a, #0, state1 ;start = 0, off = 1
+    mov pwm, #0
+    jb NEXT_STATE_BUTTON, state0_done
+    jnb NEXT_STATE_BUTTON, $ ; Wait for key release
+    mov state, #1
+state0_done:
+    ljmp state1
+
+state1:
+    cjne a, #1, state2
+    mov pwm, #100
+    mov sec, #0
+    mov a, temp_soak
+    clr c
+    subb a, temp
+    jnc state1_done
+    mov state, #2
+state1_done:
+    ljmp state2
+
+
+state2:
+cjne a, #2, state3
+mov pwm, #20
+mov a, time_soak
+clr c
+subb a, sec
+jnc state2_done
+mov state, #3
+state2_done:
+ljmp state3
+
+state3: ;
+cjne a, #220, state4 ;a is temperature and instead of cjne it'd be if greater than 220 then jump to state4
+mov pwm, #20
+mov a, time_soak
+clr c
+subb a, sec
+jnc state2_done
+mov state, #4
+state2_done:
+ljmp state4
+
+
+
+
+
+main: 
+
+
+
