@@ -15,6 +15,9 @@ CLK  EQU 22118400
 BAUD equ 115200
 BRG_VAL equ (0x100-(CLK/(16*BAUD)))
 
+TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
+TIMER2_RELOAD EQU ((65536-(CLK/TIMER2_RATE)))
+
 ;***Messages To Display*** 
 
 ;shortened labels
@@ -23,44 +26,40 @@ STime:  db 'STme:', 0
 RTemp:  db 'RTmp:', 0
 RTime:  db 'RTme:', 0
 
+;lables for runnning oven
+state:     db 'State:' , 0
+time:      db 'Tme:' , 0
+colon:     db ':',0
+temp:      db 'Tmp:'
 
 ;labels for changin parameters
 ReflowTemp:  db 'Reflow Temperature:', 0
 ReflowTime:  db 'Reflow Time:', 0
-SoakTime:  db 'Soak Time:', 0
-SoakTemp:  db 'Soak Temperature:', 0
-colon: db ':',0
+SoakTime:    db 'Soak Time:', 0
+SoakTemp:    db 'Soak Temperature:', 0
+
 
 ;Current State in Oven
 Ramp2Soak: db 'Ramp to Soak' , 0
-Soak: db 'Soak' , 0
+Soak:      db 'Soak' , 0
 Ramp2Peak: db 'Ramp to Peak' , 0
-Reflow: db 'Reflow' , 0
-Cooling: db 'Cooling' , 0
+Reflow:    db 'Reflow' , 0
+Cooling:   db 'Cooling' , 0
+
 
 
 ;Button Pin Mapping
-NEXT_STATE_BUTTON   equ P0.6
-PARAM_BUTTON        equ P0.6
-POWER_BUTTON        equ P0.6
+START_BUTTON    equ P0.6
+STIME_BUTTON    equ P0.6
+STEMP_BUTTON    equ P0.6
+RTIME_BUTTON    equ P0.6
+RTEMP_BUTTON    equ P0.6
+POWER_BUTTON    equ P0.6
+
 ; Reset vector
 org 0x0000
     ljmp main
-; External interrupt 0 vector (not used in this code)
-org 0x0003
-	reti
-; Timer/Counter 0 overflow interrupt vector
-org 0x000B
-	ljmp Timer0_ISR
-; External interrupt 1 vector (not used in this code)
-org 0x0013
-	reti
-; Timer/Counter 1 overflow interrupt vector (not used in this code)
-org 0x001B
-	reti
-; Serial port receive/transmit interrupt vector (not used in this code)
-org 0x0023 
-	reti	
+
 ; Timer/Counter 2 overflow interrupt vector
 org 0x002B
 	ljmp Timer2_ISR
@@ -68,17 +67,20 @@ org 0x002B
 
 ; Place our variables here
 DSEG at 0x30 ; Before the state machine!
-state: ds 1
-Temp_soak: ds 1
-Time_soak: ds 1
-Temp_refl: ds 1
-Time_refl: ds 1
+Count1ms:         ds 2 ; Used to determine when one second has passed
+state:            ds 1
+Temp_soak:        ds 1
+Time_soak:        ds 1
+Temp_refl:        ds 1
+Time_refl:        ds 1
 Run_time_seconds: ds 1
 Run_time_minutes: ds 1
-State_time: ds 1
-
+State_time:       ds 1
+Temp_oven:        ds 1
 
 bseg
+one_seconds_flag: dbit 1
+mf:               dbit 1
 
 cseg
 ; These 'equ' must match the hardware wiring
@@ -90,41 +92,197 @@ LCD_D5 equ P3.5
 LCD_D6 equ P3.6
 LCD_D7 equ P3.7
 
-;States for oven controller
-;State 0
-    ;Adjustable Parameters that are displayed on LCD
-
-    ;jb BOOT_BUTTON, loop_a  ; if the 'BOOT' button is not pressed skip
-    ;Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
-    ;jb BOOT_BUTTON, loop_a  ; if the 'BOOT' button is not pressed skip
-    ;jnb BOOT_BUTTON,$		; Wait for button release.  The '$' means: jump to same instruction.
-	
-	
-	
-	; A valid press of the 'BOOT' button has been detected, reset the BCD counter.
-	; But first stop timer 2 and reset the milli-seconds counter, to resync everything.
-	;clr TR2                 ; Stop timer 2
-	;clr a
-	;mov Count1ms+0, a
-	;mov Count1ms+1, a
+;***FXNS to CHECK BUTTONS
 
 
+CHECK_STIME:
+
+    jb STIME_BUTTON, CHECK_STIME_END ; if button not pressed, stop checking
+	Wait_Milli_Seconds(#50) ; debounce time
+	jb STIME_BUTTON, CHECK_STIME_END ; if button not pressed, stop checking
+	jnb STIME_BUTTON, $ ; loop while the button is pressed
+    
+    mov a, Time_soak ;increment STime by 1
+    add a, #1
+    da a
+    mov Time_soak, a
+    cjne a, #0x91, CHECK_STIME_END
+    mov Time_soak, #0x60
+	
+CHECK_STIME_END:
+ret
+
+CHECK_STEMP:
+
+    jb STEMP_BUTTON, CHECK_STEMP_END ; if button not pressed, stop checking
+	Wait_Milli_Seconds(#50) ; debounce time
+	jb STEMP_BUTTON, CHECK_STEMP_END ; if button not pressed, stop checking
+	jnb STEMP_BUTTON, $ ; loop while the button is pressed
+    
+    mov a, Temp_soak ;increment STEMP by 5
+    add a, #5
+    da a
+    mov Temp_soak, a
+    cjne a, #0x205, CHECK_STEMP_END
+    mov Temp_soak, #0x140
+	
+CHECK_STEMP_END:
+ret
+
+CHECK_RTIME:
+
+    jb RTIME_BUTTON, CHECK_RTIME_END ; if button not pressed, stop checking
+	Wait_Milli_Seconds(#50) ; debounce time
+	jb RTIME_BUTTON, CHECK_RTIME_END ; if button not pressed, stop checking
+	jnb RTIME_BUTTON, $ ; loop while the button is pressed
+    
+    mov a, Time_refl ;increment RTime by 1
+    add a, #1
+    da a
+    mov Time_refl, a
+    cjne a, #0x61, CHECK_RTIME_END
+    mov Time_refl, #0x30
+	
+CHECK_RTIME_END:
+ret
+
+CHECK_RTEMP:
+
+    jb RTEMP_BUTTON, CHECK_RTEMP_END ; if button not pressed, stop checking
+	Wait_Milli_Seconds(#50) ; debounce time
+	jb RTEMP_BUTTON, CHECK_RTEMP_END ; if button not pressed, stop checking
+	jnb RTEMP_BUTTON, $ ; loop while the button is pressed
+    
+    mov a, Temp_refl ;increment RTemp by 5
+    add a, #5
+    da a
+    mov Temp_refl, a
+    cjne a, #0x255, CHECK_RTEMP_END
+    mov Temp_refl, #0x220
+	
+CHECK_RTEMP_END:
+ret
+
+;***Additional FXNS
+
+;off state
+OFF_STATE:
+    ;**CLEAR SCREEN**
+    WriteCommand(#0x01)
+    
+    jb POWER_BUTTON, $ ; loop while the button is not pressed
+	Wait_Milli_Seconds(#50) ; debounce time
+	jb POWER_BUTTON, OFF_STATE ; it was a bounce, try again
+	jnb POWER_BUTTON, $ ; loop while the button is pressed
+ljmp state0
+;ret
+
+
+Check_Time:
+    jnb one_seconds_flag, Check_time_done ;If one sec has passes, increment state/run time and detect overflow. Otherwise skip
+    clr one_seconds_flag
+Check_sec_overflow: 
+; Increment the run time counter and state time counter
+	mov a, Run_time_seconds
+	add a, #0x01
+	da a ; Decimal adjust instruction.
+    ;check sec overflow
+    cjne a, #0x60, Check_time_done
+    mov Run_time_seconds, #0x00
+    mov a, Run_time_minutes
+    add a, #1
+    da a
+    mov Run_time_minutes, a
+
+Check_time_done:
+    mov Run_time_seconds, a
+	mov a, State_time
+	add a, #0x01
+	da a
+	mov State_time, a
+    ret
 ;Initial state, Display Parameter Values
 
-initialize_values:
+
+;---------------------------------;
+; Routine to initialize the ISR   ;
+; for timer 2                     ;
+;---------------------------------;
+Timer2_Init:
+	mov T2CON, #0 ; Stop timer/counter.  Autoreload mode.
+	mov TH2, #high(TIMER2_RELOAD)
+	mov TL2, #low(TIMER2_RELOAD)
+	; Set the reload value
+	mov RCAP2H, #high(TIMER2_RELOAD)
+	mov RCAP2L, #low(TIMER2_RELOAD)
+	; Init One millisecond interrupt counter.  It is a 16-bit variable made with two 8-bit parts
+	clr a
+	mov Count1ms+0, a
+	mov Count1ms+1, a
+	; Enable the timer and interrupts
+    setb ET2  ; Enable timer 2 interrupt
+    setb TR2  ; Enable timer 2
+	ret
+
+;---------------------------------;
+; ISR for timer 2                 ;
+;---------------------------------;
+Timer2_ISR:
+	clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in ISR
+	cpl P1.0 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+	
+	; The two registers used in the ISR must be saved in the stack
+	push acc
+	push psw
+	
+	; Increment the 16-bit one mili second counter
+	inc Count1ms+0    ; Increment the low 8-bits first
+	mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
+	jnz Inc_Done
+	inc Count1ms+1
+
+Inc_Done:
+	; Check if one second has passed
+	mov a, Count1ms+0
+	cjne a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
+	mov a, Count1ms+1
+	cjne a, #high(1000), Timer2_ISR_done
+	
+	; 1000 milliseconds have passed.  Set a flag so the main program knows
+	setb one_seconds_flag ; Let the main program know one second had passed
+	
+	clr a
+	mov Count1ms+0, a
+	mov Count1ms+1, a
+Timer2_ISR_done:
+	pop psw
+	pop acc
+	reti
+
+
+main:
+
+    mov SP, #0x7F
+    lcall Timer2_Init
+    ; In case you decide to use the pins of P0, configure the port in bidirectional mode:
+    mov P0M0, #0
+    mov P0M1, #0
+    setb EA   ;Enable global enterupt
+    lcall LCD_4BIT
 
     mov Temp_soak, #0x140 ; Soak Tmp Range is 140-200
     mov Time_soak, #0x60  ; Range 60-90 seconds
-    mov Temp_refl, #0x220 ; Range 220-250
+    mov Temp_refl, #0x220 ; Range 220-245
     mov Time_refl, #0x30  ; Range 30-60 seconds
     mov Run_time_seconds, #0x00 ; time starts at 0:00
     mov Run_time_minutes, #0x00
+    mov State_time, #0 ; set state time to 0 
 
 
-state0:
-
+state0: ; idle
+;***clear the screen***
+    WriteCommand(#0x01)
 ;***initial parameters displayed***
-
     Set_Cursor(1, 1)
     Send_Constant_String(#STemp)
     Set_Cursor(1, 6)
@@ -145,55 +303,136 @@ state0:
     Set_Cursor(2, 15)
 	Display_BCD(Time_refl)
 
-
-    cjne a, #0, state1 ;start = 0, off = 1
-    mov pwm, #0
-    jb NEXT_STATE_BUTTON, state0_done
-    jnb NEXT_STATE_BUTTON, $ ; Wait for key release
-    mov state, #1
+    ; check the parameters being pressed
+    lcall CHECK_STIME
+    lcall CHECK_STEMP
+    lcall CHECK_RTIME
+    lcall CHECK_RTEMP
+    
+    jb NEXT_STATE_BUTTON, state0
+    Wait_Milli_Seconds(#50) ; debounce time
+	jb NEXT_STATE_BUTTON, state0 ; if button not pressed, loop
+	jnb NEXT_STATE_BUTTON, $ 
+    ljmp state0_done
 state0_done:
-    ljmp state1
+    mov state, #1
+    mov State_time, #0
+    sjmp state1_beginning
 
-state1:
-    cjne a, #1, state2
-    mov pwm, #100
-    mov sec, #0
-    mov a, temp_soak
-    clr c
-    subb a, temp
-    jnc state1_done
-    mov state, #2
+state1_beginning:
+    
+    ;***clear the screen and set new display***
+    WriteCommand(#0x01)
+    Set_Cursor(1, 1)
+    Send_Constant_String(#time)
+    Set_Cursor(1, 5)
+	Display_BCD(Run_time_minutes)
+    Set_Cursor(1,6)
+    Send_Constant_String(#colon)
+    Set_Cursor(1,7)
+    Display_BCD(Run_time_seconds)
+    Set_Cursor(1,10)
+    Send_Constant_String(#temp)
+    Set_Cursor(1,14)
+    Display_BCD(Temp_oven)
+    Set_Cursor(2,1)
+    Send_Constant_String(#state)
+    Set_Cursor(2,7)
+    Send_Constant_String(#Ramp2Soak); displays current state
+    
+
+state1: ; ramp to soak
+
+    lcall Check_Time
+    ; check if temp is below 150 
+    MOV A, Temp_soak           
+    SUBB A, Temp_soak       
+    JNC state1_done    ; if greater, jump to state 2
+    JZ state1 ; if equal to, go back to state1
+    JC state1 ; if less than, go back to state1
 state1_done:
-    ljmp state2
+    mov state, #2
+    ;set State_time = 0
+    mov State_time, #0
+    sjmp state2_beginning
 
+;OFF_STATE2:
+    ;ljmp OFF_STATE
 
-state2:
-cjne a, #2, state3
-mov pwm, #20
-mov a, time_soak
-clr c
-subb a, sec
-jnc state2_done
-mov state, #3
+state2_beginning:
+    mov State_time, #0x00 ;clear the state time
+    ;***clear the screen and set new display***
+    WriteCommand(#0x01)
+    Set_Cursor(1, 1)
+    Send_Constant_String(#time)
+    Set_Cursor(1, 5)
+	Display_BCD(Run_time_minutes)
+    Set_Cursor(1,6)
+    Send_Constant_String(#colon)
+    Set_Cursor(1,7)
+    Display_BCD(Run_time_seconds)
+    Set_Cursor(1,10)
+    Send_Constant_String(#temp)
+    Set_Cursor(1,14)
+    Display_BCD(Temp_oven)
+    Set_Cursor(2,1)
+    Send_Constant_String(#state)
+    Set_Cursor(2,7)
+    Send_Constant_String(#Soak); displays current state
+
+state2: 
+    ; timer (incrementing state time)
+    lcall Check_Time
+    
+    ; loop back to state2 if run time is less than soak time
+    mov a, Time_soak
+    subb a, State_time
+    cjne a, #0, state2
+    
 state2_done:
-ljmp state3
+    mov State_time, #0
+    ljmp state3_beginning
+
+state3_beginning:
+
+    ;***clear the screen and set new display***
+    WriteCommand(#0x01)
+    Set_Cursor(1, 1)
+    Send_Constant_String(#time)
+    Set_Cursor(1, 5)
+	Display_BCD(Run_time_minutes)
+    Set_Cursor(1,6)
+    Send_Constant_String(#colon)
+    Set_Cursor(1,7)
+    Display_BCD(Run_time_seconds)
+    Set_Cursor(1,10)
+    Send_Constant_String(#temp)
+    Set_Cursor(1,14)
+    Display_BCD(Temp_oven)
+    Set_Cursor(2,1)
+    Send_Constant_String(#state)
+    Set_Cursor(2,7)
+    Send_Constant_String(#Ramp2Peak)
 
 state3: ;
-cjne a, #220, state4 ;a is temperature and instead of cjne it'd be if greater than 220 then jump to state4
-mov pwm, #20
-mov a, time_soak
-clr c
-subb a, sec
-jnc state2_done
-mov state, #4
-state2_done:
-ljmp state4
+
+    lcall Check_Time
+    mov a, Temp_oven
+    subb a, #220
+    JNC state3_done    ; if greater, jump to state 2
+    JZ state3 ; if equal to, go back to state1
+    JC state3 ; if less than, go back to state3
+    
+
+state3_done:
+    mov State_time, #0
+    ljmp state4
 
 
 
 
 
-main: 
+ 
 
 
 
