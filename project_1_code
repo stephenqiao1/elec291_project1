@@ -277,6 +277,17 @@ Timer2_ISR_done:
 	reti
 
 
+Power_conversion:
+; Algorithm: (distribution of power across the soak time)
+; 1. Save soak_time to a register
+; 2. Divide the value in the register by 10
+; 3. Multiply the value in the register by 2
+; 4. Divide the value in the register by the variable num_intervals
+; 5. Save the value to a new register
+; 6. Subtract soak_time by the value in 5. and save to a different register
+; 7. Divide the value in the register by the variable num_intervals to get the wait time in between intervals 
+
+
 main:
 
     mov SP, #0x7F
@@ -388,7 +399,8 @@ state1_done:
 ;OFF_STATE2:
     ;ljmp OFF_STATE
 
-state2_beginning:
+; preheat/soak
+state2_beginning: 
     mov State_time, #0x00 ;clear the state time
     ;***clear the screen and set new display***
     WriteCommand(#0x01)
@@ -427,6 +439,7 @@ state2_done:
     mov State_time, #0
     ljmp state3_beginning
 
+; ramp to peak
 state3_beginning:
 
     ;***clear the screen and set new display***
@@ -463,7 +476,20 @@ state3_done:
     ljmp state4
 
 
+; ramp to peak 
+state4_beginning:
 
+state4:
+
+state4_done: 
+
+
+; cooling
+state5_beginning:
+
+state5:
+
+state5_done:
 
 
  
