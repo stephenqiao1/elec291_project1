@@ -94,6 +94,23 @@ LCD_D7 equ P3.7
 
 ;***FXNS to CHECK BUTTONS
 
+Display_lower_BCD mac
+    push ar0
+    mov r0, %0
+    lcall ?Display_lower_BCD
+    pop ar0
+endmac
+
+?Display_lower_BCD:
+    push acc
+    ; write least significant digit
+    mov a, r0
+    anl a, #0fh
+    orl a, #30h
+    lcall ?WriteData
+    pop acc
+ret
+
 
 CHECK_STIME:
 
@@ -283,20 +300,27 @@ state0: ; idle
 ;***clear the screen***
     WriteCommand(#0x01)
 ;***initial parameters displayed***
+    
+    ;Displays Soak Temp and Time
     Set_Cursor(1, 1)
     Send_Constant_String(#STemp)
     Set_Cursor(1, 6)
-	Display_BCD(Temp_soak)
+    Display_lower_BCD(Temp_soak+1)
+    Set_Cursor(1,7)
+	Display_BCD(Temp_soak+0)
     
     Set_Cursor(1,10)
     Send_Constant_String(#STime)
     Set_Cursor(1, 15)
 	Display_BCD(Time_soak)
-    
+
+    ;Displays Reflow Temp and Time
     Set_Cursor(2,1)
     Send_Constant_String(#RTemp)
-    Set_Cursor(2, 6)
-	Display_BCD(Temp_refl)
+    Set_Cursor(2,6)
+    Display_lower_BCD(Temp_refl+1)
+    Set_Cursor(2,7)
+	Display_BCD(Temp_refl+0)
     
     Set_Cursor(2,10)
     Send_Constant_String(#RTime)
@@ -323,6 +347,7 @@ state1_beginning:
     
     ;***clear the screen and set new display***
     WriteCommand(#0x01)
+    
     Set_Cursor(1, 1)
     Send_Constant_String(#time)
     Set_Cursor(1, 5)
@@ -331,10 +356,14 @@ state1_beginning:
     Send_Constant_String(#colon)
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
+    
     Set_Cursor(1,10)
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_BCD(Temp_oven)
+    Display_lower_BCD(Temp_oven+1)
+    Set_Cursor(1,15)
+    Display_BCD(Temp_oven+0)
+    
     Set_Cursor(2,1)
     Send_Constant_String(#state)
     Set_Cursor(2,7)
@@ -363,6 +392,7 @@ state2_beginning:
     mov State_time, #0x00 ;clear the state time
     ;***clear the screen and set new display***
     WriteCommand(#0x01)
+    
     Set_Cursor(1, 1)
     Send_Constant_String(#time)
     Set_Cursor(1, 5)
@@ -372,10 +402,14 @@ state2_beginning:
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
     Set_Cursor(1,10)
+    
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_BCD(Temp_oven)
+    Display_lower_BCD(Temp_oven+1)
+    Set_Cursor(1,15)
+    Display_BCD(Temp_oven+0)
     Set_Cursor(2,1)
+    
     Send_Constant_String(#state)
     Set_Cursor(2,7)
     Send_Constant_String(#Soak); displays current state
