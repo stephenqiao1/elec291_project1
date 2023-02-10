@@ -461,36 +461,85 @@ state3_beginning:
     Set_Cursor(2,7)
     Send_Constant_String(#Ramp2Peak)
 
-state3: ;
-
+state3: 
     lcall Check_Time
     mov a, Temp_oven
     subb a, #220
-    JNC state3_done    ; if greater, jump to state 2
-    JZ state3 ; if equal to, go back to state1
+    JNC state3_done    ; if greater, jump to state 4
+    JZ state3 ; if equal to, go back to state3
     JC state3 ; if less than, go back to state3
     
 
 state3_done:
     mov State_time, #0
-    ljmp state4
+    ljmp state4_beginning
 
 
 ; ramp to peak 
 state4_beginning:
+    ;***clear the screen and set new display***
+    WriteCommand(#0x01)
+    Set_Cursor(1, 1)
+    Send_Constant_String(#time)
+    Set_Cursor(1, 5)
+	Display_BCD(Run_time_minutes)
+    Set_Cursor(1,6)
+    Send_Constant_String(#colon)
+    Set_Cursor(1,7)
+    Display_BCD(Run_time_seconds)
+    Set_Cursor(1,10)
+    Send_Constant_String(#temp)
+    Set_Cursor(1,14)
+    Display_BCD(Temp_oven)
+    Set_Cursor(2,1)
+    Send_Constant_String(#state)
+    Set_Cursor(2,7)
+    Send_Constant_String(#Ramp2Peak)
+
 
 state4:
+    lcall Check_Time
+    mov a, Time_refl
+    subb a, State_time
+    cjne a, #0, state4
 
 state4_done: 
+    mov State_time, #0
+    ljmp state5_beginning 
 
 
 ; cooling
 state5_beginning:
+;***clear the screen and set new display***
+    WriteCommand(#0x01)
+    Set_Cursor(1, 1)
+    Send_Constant_String(#time)
+    Set_Cursor(1, 5)
+	Display_BCD(Run_time_minutes)
+    Set_Cursor(1,6)
+    Send_Constant_String(#colon)
+    Set_Cursor(1,7)
+    Display_BCD(Run_time_seconds)
+    Set_Cursor(1,10)
+    Send_Constant_String(#temp)
+    Set_Cursor(1,14)
+    Display_BCD(Temp_oven)
+    Set_Cursor(2,1)
+    Send_Constant_String(#state)
+    Set_Cursor(2,7)
+    Send_Constant_String(#Ramp2Peak)
 
 state5:
+    lcall Check_Time
+    mov a, Temp_oven
+    subb a, #60
+    JNC state5    ; if greater, jump back to state 5
+    JZ state5 ; if equal to, go back to state5
+    JC state5_done ; if less than, go back to state 0
 
 state5_done:
-
+    mov State_time, #0
+    ljmp state0_beginning  
 
  
 
