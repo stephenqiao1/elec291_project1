@@ -69,14 +69,14 @@ org 0x002B
 DSEG at 0x30 ; Before the state machine!
 Count1ms:         ds 2 ; Used to determine when one second has passed
 state:            ds 1
-Temp_soak:        ds 1
+Temp_soak:        ds 2
 Time_soak:        ds 1
-Temp_refl:        ds 1
+Temp_refl:        ds 2
 Time_refl:        ds 1
 Run_time_seconds: ds 1
 Run_time_minutes: ds 1
 State_time:       ds 1
-Temp_oven:        ds 1
+Temp_oven:        ds 2
 
 bseg
 one_seconds_flag: dbit 1
