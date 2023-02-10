@@ -69,14 +69,14 @@ org 0x002B
 DSEG at 0x30 ; Before the state machine!
 Count1ms:         ds 2 ; Used to determine when one second has passed
 state:            ds 1
-Temp_soak:        ds 2
+Temp_soak:        ds 1
 Time_soak:        ds 1
-Temp_refl:        ds 2
+Temp_refl:        ds 1
 Time_refl:        ds 1
 Run_time_seconds: ds 1
 Run_time_minutes: ds 1
 State_time:       ds 1
-Temp_oven:        ds 2
+Temp_oven:        ds 1
 
 bseg
 one_seconds_flag: dbit 1
@@ -93,24 +93,6 @@ LCD_D6 equ P3.6
 LCD_D7 equ P3.7
 
 ;***FXNS to CHECK BUTTONS
-
-Display_lower_BCD mac
-    push ar0
-    mov r0, %0
-    lcall ?Display_lower_BCD
-    pop ar0
-endmac
-
-?Display_lower_BCD:
-    push acc
-    ; write least significant digit
-    mov a, r0
-    anl a, #0fh
-    orl a, #30h
-    lcall ?WriteData
-    pop acc
-ret
-
 
 CHECK_STIME:
 
@@ -181,6 +163,22 @@ CHECK_RTEMP_END:
 ret
 
 ;***Additional FXNS
+
+SendToLCD:
+    mov b, #100
+    div ab
+    orl a, #0x30 ; Convert hundreds to ASCII
+    lcall ?WriteData ; Send to LCD
+    mov a, b    ; Remainder is in register b
+    mov b, #10
+    div ab
+    orl a, #0x30 ; Convert tens to ASCII
+    lcall ?WriteData; Send to LCD
+    mov a, b
+    orl a, #0x30 ; Convert units to ASCII
+    lcall ?WriteData; Send to LCD
+ret
+
 
 ;off state
 OFF_STATE:
@@ -316,9 +314,8 @@ state0: ; idle
     Set_Cursor(1, 1)
     Send_Constant_String(#STemp)
     Set_Cursor(1, 6)
-    Display_lower_BCD(Temp_soak+1)
-    Set_Cursor(1,7)
-	Display_BCD(Temp_soak+0)
+    mov a, Temp_soak
+    SendToLCD
     
     Set_Cursor(1,10)
     Send_Constant_String(#STime)
@@ -329,9 +326,8 @@ state0: ; idle
     Set_Cursor(2,1)
     Send_Constant_String(#RTemp)
     Set_Cursor(2,6)
-    Display_lower_BCD(Temp_refl+1)
-    Set_Cursor(2,7)
-	Display_BCD(Temp_refl+0)
+    mov a, Temp_refl
+    SendToLCD
     
     Set_Cursor(2,10)
     Send_Constant_String(#RTime)
@@ -371,9 +367,8 @@ state1_beginning:
     Set_Cursor(1,10)
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_lower_BCD(Temp_oven+1)
-    Set_Cursor(1,15)
-    Display_BCD(Temp_oven+0)
+    mov a, Temp_oven
+    SendToLCD
     
     Set_Cursor(2,1)
     Send_Constant_String(#state)
@@ -413,14 +408,12 @@ state2_beginning:
     Send_Constant_String(#colon)
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
-    Set_Cursor(1,10)
     
+    Set_Cursor(1,10)
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_lower_BCD(Temp_oven+1)
-    Set_Cursor(1,15)
-    Display_BCD(Temp_oven+0)
-    Set_Cursor(2,1)
+    mov a, Temp_oven
+    SendToLCD
     
     Send_Constant_String(#state)
     Set_Cursor(2,7)
@@ -452,15 +445,14 @@ state3_beginning:
     Send_Constant_String(#colon)
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
-    Set_Cursor(1,10)
     
+    Set_Cursor(1,10)
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_lower_BCD(Temp_oven+1)
-    Set_Cursor(1,15)
-    Display_BCD(Temp_oven+0)
-    Set_Cursor(2,1)
+    mov a, Temp_oven
+    SendToLCD
     
+    Set_Cursor(2,1)
     Send_Constant_String(#state)
     Set_Cursor(2,7)
     Send_Constant_String(#Ramp2Peak)
@@ -491,15 +483,14 @@ state4_beginning:
     Send_Constant_String(#colon)
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
-    Set_Cursor(1,10)
     
+    Set_Cursor(1,10)
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_lower_BCD(Temp_oven+1)
-    Set_Cursor(1,15)
-    Display_BCD(Temp_oven+0)
-    Set_Cursor(2,1)
+    mov a, Temp_oven
+    SendToLCD
     
+    Set_Cursor(2,1)  
     Send_Constant_String(#state)
     Set_Cursor(2,7)
     Send_Constant_String(#Reflow)
@@ -528,15 +519,14 @@ state5_beginning:
     Send_Constant_String(#colon)
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
-    Set_Cursor(1,10)
     
+    Set_Cursor(1,10)
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_lower_BCD(Temp_oven+1)
-    Set_Cursor(1,15)
-    Display_BCD(Temp_oven+0)
-    Set_Cursor(2,1)
+    mov a, Temp_oven
+    SendToLCD
     
+    Set_Cursor(2,1)
     Send_Constant_String(#state)
     Set_Cursor(2,7)
     Send_Constant_String(#Cooling)
