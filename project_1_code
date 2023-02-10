@@ -109,6 +109,7 @@ CHECK_STIME:
     mov Time_soak, #0x60
 	
 CHECK_STIME_END:
+    lcall Save_Configuration
 ret
 
 CHECK_STEMP:
@@ -126,6 +127,7 @@ CHECK_STEMP:
     mov Temp_soak, #0x130
 	
 CHECK_STEMP_END:
+    lcall Save_Configuration
 ret
 
 CHECK_RTIME:
@@ -143,6 +145,7 @@ CHECK_RTIME:
     mov Time_refl, #0x30
 	
 CHECK_RTIME_END:
+    lcall Save_Configuration
 ret
 
 CHECK_RTEMP:
@@ -160,6 +163,7 @@ CHECK_RTEMP:
     mov Temp_refl, #0x220
 	
 CHECK_RTEMP_END:
+    lcall Save_Configuration
 ret
 
 ;***Additional FXNS
@@ -179,6 +183,60 @@ SendToLCD:
     lcall ?WriteData; Send to LCD
 ret
 
+;The following functions store and restore the values--------------------------------------------------------------------------
+loadbyte mac
+    mov a, %0
+    movx @dptr, a
+    inc dptr
+endmac
+
+Save_Configuration:
+    mov FCON, #0x08 ; Page Buffer Mapping Enabled (FPS = 1)
+    mov dptr, #0x7f80 ; Last page of flash memory
+; Save variables
+    loadbyte(Temp_soak) ; @0x7f80
+    loadbyte(Time_soak) ; @0x7f81
+    loadbyte(Temp_refl) ; @0x7f82
+    loadbyte(Time_refl) ; @0x7f83
+    loadbyte(#0x55) ; First key value @0x7f84
+    loadbyte(#0xAA) ; Second key value @0x7f85
+    mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0)
+    orl EECON, #0b01000000 ; Enable auto-erase on next write sequence
+    mov FCON, #0x50 ; Write trigger first byte
+    mov FCON, #0xA0 ; Write trigger second byte
+; CPU idles until writing of flash completes.
+    mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0)
+    anl EECON, #0b10111111 ; Disable auto-erase
+ret
+
+getbyte mac
+    clr a
+    movc a, @a+dptr
+    mov %0, a
+    inc dptr
+endmac
+
+Load_Configuration:
+    mov dptr, #0x7f84 ; First key value location.
+    getbyte(R0) ; 0x7f84 should contain 0x55
+    cjne R0, #0x55, Load_Defaults
+    getbyte(R0) ; 0x7f85 should contain 0xAA
+    cjne R0, #0xAA, Load_Defaults
+; Keys are good.  Get stored values.
+    mov dptr, #0x7f80
+    getbyte(Temp_soak) ; 0x7f80
+    getbyte(Time_soak) ; 0x7f81
+    getbyte(Temp_refl) ; 0x7f82
+    getbyte(Time_refl) ; 0x7f83
+ret
+
+Load_Defaults:
+    mov Temp_soak, #0x130 ; Soak Tmp Range is 130-170
+    mov Time_soak, #0x60  ; Range 60-90 seconds
+    mov Temp_refl, #0x220 ; Range 220-245
+    mov Time_refl, #0x30  ; Range 30-60 seconds
+ret 
+;-------------------------------------------------------------------------------------------------------------------------------
 
 ;off state
 OFF_STATE:
@@ -284,22 +342,36 @@ Power_conversion:
 ; 5. Save the value to a new register
 ; 6. Subtract soak_time by the value in 5. and save to a different register
 ; 7. Divide the value in the register by the variable num_intervals to get the wait time in between intervals 
+ mov a, soak_time
+    mov r5, #0 ;counter
 
+    div_by_10_loop:
+        SHR a ;divide by 2
+        inc r5
+        cjne r5, #5, div_by_10_loop
+
+    SHL a ;multiply by 2
+
+    mov r5, num_intervals
+    mov r6, #0 ;result register
+
+    div_by_num_intervals:
+        subb a, r5
+        JC continue ;go to continue branch if a < num_intervals
+        sub a, r5 ; a = a - num_intervals
+
+        
 
 main:
-
     mov SP, #0x7F
     lcall Timer2_Init
-    ; In case you decide to use the pins of P0, configure the port in bidirectional mode:
+    ; In case you decide to use the pins of P0, configure the port in bidirectional mode. Can be ignored
     mov P0M0, #0
     mov P0M1, #0
     setb EA   ;Enable global enterupt
     lcall LCD_4BIT
 
-    mov Temp_soak, #0x130 ; Soak Tmp Range is 130-170
-    mov Time_soak, #0x60  ; Range 60-90 seconds
-    mov Temp_refl, #0x220 ; Range 220-245
-    mov Time_refl, #0x30  ; Range 30-60 seconds
+    lcall Load_Configuration
     mov Run_time_seconds, #0x00 ; time starts at 0:00
     mov Run_time_minutes, #0x00
     mov State_time, #0 ; set state time to 0 
@@ -315,7 +387,7 @@ state0: ; idle
     Send_Constant_String(#STemp)
     Set_Cursor(1, 6)
     mov a, Temp_soak
-    SendToLCD
+    lcall SendToLCD
     
     Set_Cursor(1,10)
     Send_Constant_String(#STime)
@@ -327,7 +399,7 @@ state0: ; idle
     Send_Constant_String(#RTemp)
     Set_Cursor(2,6)
     mov a, Temp_refl
-    SendToLCD
+    lcall SendToLCD
     
     Set_Cursor(2,10)
     Send_Constant_String(#RTime)
@@ -339,7 +411,7 @@ state0: ; idle
     lcall CHECK_STEMP
     lcall CHECK_RTIME
     lcall CHECK_RTEMP
-    
+
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
 	jb NEXT_STATE_BUTTON, state0 ; if button not pressed, loop
@@ -379,6 +451,11 @@ state1_beginning:
 state1: ; ramp to soak
 
     lcall Check_Time
+    Set_Cursor(1, 5)
+	Display_BCD(Run_time_minutes)
+    Set_Cursor(1,7)
+    Display_BCD(Run_time_seconds)
+    
     ; check if temp is below 150 
     MOV A, Temp_soak           
     SUBB A, Temp_soak       
@@ -422,6 +499,10 @@ state2_beginning:
 state2: 
     ; timer (incrementing state time)
     lcall Check_Time
+    Set_Cursor(1, 5)
+	Display_BCD(Run_time_minutes)
+    Set_Cursor(1,7)
+    Display_BCD(Run_time_seconds)
     
     ; loop back to state2 if run time is less than soak time
     mov a, Time_soak
