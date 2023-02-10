@@ -140,8 +140,8 @@ CHECK_STEMP:
     add a, #5
     da a
     mov Temp_soak, a
-    cjne a, #0x205, CHECK_STEMP_END
-    mov Temp_soak, #0x140
+    cjne a, #0x175, CHECK_STEMP_END
+    mov Temp_soak, #0x130
 	
 CHECK_STEMP_END:
 ret
@@ -298,7 +298,7 @@ main:
     setb EA   ;Enable global enterupt
     lcall LCD_4BIT
 
-    mov Temp_soak, #0x140 ; Soak Tmp Range is 140-200
+    mov Temp_soak, #0x130 ; Soak Tmp Range is 130-170
     mov Time_soak, #0x60  ; Range 60-90 seconds
     mov Temp_refl, #0x220 ; Range 220-245
     mov Time_refl, #0x30  ; Range 30-60 seconds
