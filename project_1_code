@@ -469,7 +469,7 @@ state3:
     JZ state3 ; if equal to, go back to state3
     JC state3 ; if less than, go back to state3
     
-
+;helllooooooooo
 state3_done:
     mov State_time, #0
     ljmp state4_beginning
