@@ -40,9 +40,9 @@ SoakTemp:    db 'Soak Temperature:', 0
 
 
 ;Current State in Oven
-Ramp2Soak: db 'Ramp to Soak' , 0
+Ramp2Soak: db 'Ramp-Soak' , 0
 Soak:      db 'Soak' , 0
-Ramp2Peak: db 'Ramp to Peak' , 0
+Ramp2Peak: db 'Ramp-Peak' , 0
 Reflow:    db 'Reflow' , 0
 Cooling:   db 'Cooling' , 0
 
@@ -453,10 +453,14 @@ state3_beginning:
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
     Set_Cursor(1,10)
+    
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_BCD(Temp_oven)
+    Display_lower_BCD(Temp_oven+1)
+    Set_Cursor(1,15)
+    Display_BCD(Temp_oven+0)
     Set_Cursor(2,1)
+    
     Send_Constant_String(#state)
     Set_Cursor(2,7)
     Send_Constant_String(#Ramp2Peak)
@@ -469,13 +473,13 @@ state3:
     JZ state3 ; if equal to, go back to state3
     JC state3 ; if less than, go back to state3
     
-
+;helllooooooooo
 state3_done:
     mov State_time, #0
     ljmp state4_beginning
 
 
-; ramp to peak 
+; reflow 
 state4_beginning:
     ;***clear the screen and set new display***
     WriteCommand(#0x01)
@@ -488,13 +492,17 @@ state4_beginning:
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
     Set_Cursor(1,10)
+    
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_BCD(Temp_oven)
+    Display_lower_BCD(Temp_oven+1)
+    Set_Cursor(1,15)
+    Display_BCD(Temp_oven+0)
     Set_Cursor(2,1)
+    
     Send_Constant_String(#state)
     Set_Cursor(2,7)
-    Send_Constant_String(#Ramp2Peak)
+    Send_Constant_String(#Reflow)
 
 
 state4:
@@ -521,14 +529,17 @@ state5_beginning:
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
     Set_Cursor(1,10)
+    
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
-    Display_BCD(Temp_oven)
+    Display_lower_BCD(Temp_oven+1)
+    Set_Cursor(1,15)
+    Display_BCD(Temp_oven+0)
     Set_Cursor(2,1)
+    
     Send_Constant_String(#state)
     Set_Cursor(2,7)
-    Send_Constant_String(#Ramp2Peak)
-
+    Send_Constant_String(#Cooling)
 state5:
     lcall Check_Time
     mov a, Temp_oven
