@@ -40,9 +40,9 @@ SoakTemp:    db 'Soak Temperature:', 0
 
 
 ;Current State in Oven
-Ramp2Soak: db 'Ramp Soak' , 0
+Ramp2Soak: db 'Ramp-Soak' , 0
 Soak:      db 'Soak' , 0
-Ramp2Peak: db 'Ramp Peak' , 0
+Ramp2Peak: db 'Ramp-Peak' , 0
 Reflow:    db 'Reflow' , 0
 Cooling:   db 'Cooling' , 0
 
