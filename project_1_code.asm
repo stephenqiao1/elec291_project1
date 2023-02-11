@@ -2,18 +2,8 @@ $NOLIST
 $MODLP51RC2
 $LIST
 
-org 0x0000
-
-$NOLIST
-$include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
-$LIST
-
-$NOLIST
-$include(math32.inc)
-$LIST
-
 ;-------------------------------------------------------------------------------------------------------------------------------
-;These �EQU� must match the wiring between the microcontroller and ADC
+;These EQU must match the wiring between the microcontroller and ADC
 CLK  EQU 22118400
 TIMER1_RATE    EQU 22050     ; 22050Hz is the sampling rate of the wav file we are playing
 TIMER1_RELOAD  EQU 0x10000-(SYSCLK/TIMER1_RATE)
@@ -21,26 +11,29 @@ BAUD equ 115200
 BRG_VAL equ (0x100-(CLK/(16*BAUD)))
 
 TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
-TIMER2_RELOAD EQU (Send_BCD(65536-(CLK/TIMER2_RATE)))
+TIMER2_RELOAD EQU (65536-(CLK/TIMER2_RATE))
 
 
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;Button Pin Mapping
-START_BUTTON    equ P0.6
-STIME_BUTTON    equ P0.6
-STEMP_BUTTON    equ P0.6
-RTIME_BUTTON    equ P0.6
+NEXT_STATE_BUTTON  equ P0.5
+STIME_BUTTON    equ P0.2
+STEMP_BUTTON    equ P0.3
+RTIME_BUTTON    equ P0.4
 RTEMP_BUTTON    equ P0.6
-POWER_BUTTON    equ P0.6
+POWER_BUTTON    equ P4.5
+SHIFT_BUTTON    equ p0.0
 
 ;Output Pins
-OVEN_POWER      equ P0.6
+OVEN_POWER      equ P0.7
+SPEAKER         equ P2.6
+;FLASH_CE        equ P0.
 
 ;Thermowire Pins
-CE_ADC    EQU  P0.6
-MY_MOSI   EQU  P0.6
-MY_MISO   EQU  P0.6
-MY_SCLK   EQU  P0.6 
+CE_ADC    EQU  P1.7
+MY_MOSI   EQU  P1.6
+MY_MISO   EQU  P1.5
+MY_SCLK   EQU  P1.4 
 
 ; These 'equ' must match the hardware wiring
 LCD_RS equ P3.2
@@ -52,19 +45,38 @@ LCD_D6 equ P3.6
 LCD_D7 equ P3.7
 
 ;-------------------------------------------------------------------------------------------------------------------------------
-; Reset vector
+
 org 0x0000
     ljmp main
 
+; External interrupt 0 vector (not used in this code)
+org 0x0003
+	reti
+
+; Timer/Counter 0 overflow interrupt vector
+org 0x000B
+	reti
+
+; External interrupt 1 vector (not used in this code)
+org 0x0013
+	reti
+
+; Timer/Counter 1 overflow interrupt vector
+org 0x001B
+	ljmp Timer1_ISR
+
+; Serial port receive/transmit interrupt vector (not used in this code)
+org 0x0023 
+	reti
+	
 ; Timer/Counter 2 overflow interrupt vector
 org 0x002B
-	ljmp Timer2_ISR
-
+    ljmp Timer2_ISR
 ;-------------------------------------------------------------------------------------------------------------------------------
 ; Place our variables here
 DSEG at 0x30 ; Before the state machine!
 Count1ms:         ds 2 ; Used to determine when one second has passed
-State:            ds 1
+States:           ds 1
 Temp_soak:        ds 1
 Time_soak:        ds 1
 Temp_refl:        ds 1
@@ -73,11 +85,21 @@ Run_time_seconds: ds 1
 Run_time_minutes: ds 1
 State_time:       ds 1
 Temp_oven:        ds 1
+x:                ds 4
+y:                ds 4
+bcd:              ds 5
+Result:           ds 2
+w:                ds 3
 
-x:   ds 4
-y:   ds 4
-bcd: ds 5
-Result: ds 2
+$NOLIST
+$include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
+$LIST
+
+$NOLIST
+$include(math32.inc)
+$LIST
+
+
 
 bseg
 one_seconds_flag: dbit 1
@@ -91,9 +113,9 @@ cseg
 
 ;shortened labels
 STemp:  db 'STmp:', 0
-STime:  db 'STme:', 0
+STime:  db 'STm:', 0
 RTemp:  db 'RTmp:', 0
-RTime:  db 'RTme:', 0
+RTime:  db 'RTm:', 0
 
 ;lables for runnning oven
 state:     db 'State:' , 0
@@ -142,6 +164,47 @@ DO_SPI_G_LOOP:
 	pop acc
 	ret
 
+Send_SPI:
+	SPIBIT MAC
+	    ; Send/Receive bit %0
+		rlc a
+		mov MY_MOSI, c
+		setb MY_SCLK
+		mov c, MY_MISO
+		clr MY_SCLK
+		mov acc.0, c
+	ENDMAC
+	
+	SPIBIT(7)
+	SPIBIT(6)
+	SPIBIT(5)
+	SPIBIT(4)
+	SPIBIT(3)
+	SPIBIT(2)
+	SPIBIT(1)
+	SPIBIT(0)
+
+ret
+
+Change_8bit_Variable MAC
+    jb %0, %2
+    Wait_Milli_Seconds(#50) ; de-bounce
+    jb %0, %2
+    jnb %0, $
+    jb SHIFT_BUTTON, skip%Mb
+    dec %1
+    sjmp skip%Ma
+    skip%Mb:
+    inc %1
+    skip%Ma:
+ENDMAC
+
+;Change_8bit_Variable(MY_VARIABLE_BUTTON, my_variable, loop_c)
+;    Set_Cursor(2, 14)
+;    mov a, my_variable
+;    lcall SendToLCD
+;lcall Save_Configuration
+
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;***FXNS For Serial Port
 
@@ -173,72 +236,84 @@ ret
 
 CHECK_STIME:
 
-    jb STIME_BUTTON, CHECK_STIME_END ; if button not pressed, stop checking
-	Wait_Milli_Seconds(#50) ; debounce time
-	jb STIME_BUTTON, CHECK_STIME_END ; if button not pressed, stop checking
-	jnb STIME_BUTTON, $ ; loop while the button is pressed
+    ;jb STIME_BUTTON, CHECK_STIME_END ; if button not pressed, stop checking
+	;Wait_Milli_Seconds(#50) ; debounce time
+	;jb STIME_BUTTON, CHECK_STIME_END ; if button not pressed, stop checking
+	;jnb STIME_BUTTON, $ ; loop while the button is pressed
     
-    mov a, Time_soak ;increment STime by 1
-    add a, #1
-    da a
-    mov Time_soak, a
-    cjne a, #0x91, CHECK_STIME_END
-    mov Time_soak, #0x60
-    lcall Save_Configuration
+    ;inc Time_soak
+
+    ;mov a, Time_soak ;increment STime by 1
+    ;add a, #0x01
+    ;da a
+    ;mov Time_soak, a
+    ;cjne a, #0x5B, CHECK_STIME_END
+    ;mov Time_soak, #0x3C
+    ;lcall Save_Configuration
+
+    Change_8bit_Variable(STIME_BUTTON, Time_soak, CHECK_STIME_END)
+    ;mov a, Time_soak
+    ;lcall SendToLCD
+    ;lcall Save_Configuration
 	
 CHECK_STIME_END:
 ret
 
 CHECK_STEMP:
 
-    jb STEMP_BUTTON, CHECK_STEMP_END ; if button not pressed, stop checking
-	Wait_Milli_Seconds(#50) ; debounce time
-	jb STEMP_BUTTON, CHECK_STEMP_END ; if button not pressed, stop checking
-	jnb STEMP_BUTTON, $ ; loop while the button is pressed
+    ;jb STEMP_BUTTON, CHECK_STEMP_END ; if button not pressed, stop checking
+	;Wait_Milli_Seconds(#50) ; debounce time
+	;jb STEMP_BUTTON, CHECK_STEMP_END ; if button not pressed, stop checking
+	;jnb STEMP_BUTTON, $ ; loop while the button is pressed
     
-    mov a, Temp_soak ;increment STEMP by 5
-    add a, #5
-    da a
-    mov Temp_soak, a
-    cjne a, #0x175, CHECK_STEMP_END
-    mov Temp_soak, #0x130
-    lcall Save_Configuration
+    ;mov a, Temp_soak ;increment STEMP by 5
+    ;add a, #5
+    ;da a
+    ;mov Temp_soak, a
+    ;cjne a, #175, CHECK_STEMP_END
+    ;mov Temp_soak, #130
+
+    Change_8bit_Variable(STEMP_BUTTON, Temp_soak, CHECK_STEMP_END)
+    ;lcall Save_Configuration
 	
 CHECK_STEMP_END:
 ret
 
 CHECK_RTIME:
 
-    jb RTIME_BUTTON, CHECK_RTIME_END ; if button not pressed, stop checking
-	Wait_Milli_Seconds(#50) ; debounce time
-	jb RTIME_BUTTON, CHECK_RTIME_END ; if button not pressed, stop checking
-	jnb RTIME_BUTTON, $ ; loop while the button is pressed
+    ;jb RTIME_BUTTON, CHECK_RTIME_END ; if button not pressed, stop checking
+	;Wait_Milli_Seconds(#50) ; debounce time
+	;jb RTIME_BUTTON, CHECK_RTIME_END ; if button not pressed, stop checking
+	;jnb RTIME_BUTTON, $ ; loop while the button is pressed
     
-    mov a, Time_refl ;increment RTime by 1
-    add a, #1
-    da a
-    mov Time_refl, a
-    cjne a, #0x61, CHECK_RTIME_END
-    mov Time_refl, #0x30
-    lcall Save_Configuration
-	
+    ;mov a, Time_refl ;increment RTime by 1
+    ;add a, #0x01
+    ;da a
+    ;mov Time_refl, a
+    ;cjne a, #0x3D, CHECK_RTIME_END
+    ;mov Time_refl, #0x1E
+    ;lcall Save_Configuration
+	Change_8bit_Variable(RTIME_BUTTON, Time_refl, CHECK_RTIME_END)
+
 CHECK_RTIME_END:
 ret
 
 CHECK_RTEMP:
 
-    jb RTEMP_BUTTON, CHECK_RTEMP_END ; if button not pressed, stop checking
-	Wait_Milli_Seconds(#50) ; debounce time
-	jb RTEMP_BUTTON, CHECK_RTEMP_END ; if button not pressed, stop checking
-	jnb RTEMP_BUTTON, $ ; loop while the button is pressed
+    ;jb RTEMP_BUTTON, CHECK_RTEMP_END ; if button not pressed, stop checking
+	;Wait_Milli_Seconds(#50) ; debounce time
+	;jb RTEMP_BUTTON, CHECK_RTEMP_END ; if button not pressed, stop checking
+	;jnb RTEMP_BUTTON, $ ; loop while the button is pressed
     
-    mov a, Temp_refl ;increment RTemp by 5
-    add a, #5
-    da a
-    mov Temp_refl, a
-    cjne a, #0x255, CHECK_RTEMP_END
-    mov Temp_refl, #0x220
-    lcall Save_Configuration
+    ;mov a, Temp_refl ;increment RTemp by 5
+    ;add a, #5
+    ;da a
+    ;mov Temp_refl, a
+    ;cjne a, #255, CHECK_RTEMP_END
+    ;mov Temp_refl, #220
+    ;lcall Save_Configuration
+
+    Change_8bit_Variable(RTEMP_BUTTON, Temp_refl, CHECK_RTEMP_END)
 	
 CHECK_RTEMP_END:
 ret
@@ -248,7 +323,7 @@ CHECK_POWER:
     jb POWER_BUTTON, CHECK_POWER_END ; if button not pressed, stop checking
 	Wait_Milli_Seconds(#50) ; debounce time
 	jb POWER_BUTTON, CHECK_POWER_END ; if button not pressed, stop checking
-	jnb RTEMP_BUTTON, $ ; loop while the button is pressed
+	jnb POWER_BUTTON, $ ; loop while the button is pressed
     lcall OFF_STATE
 
 CHECK_POWER_END:
@@ -260,15 +335,15 @@ ret
 SendToLCD:
     mov b, #100
     div ab
-    orl a, #0x30 ; Convert hundreds to ASCII
+    orl a, #0x30h ; Convert hundreds to ASCII
     lcall ?WriteData ; Send to LCD
     mov a, b    ; Remainder is in register b
     mov b, #10
     div ab
-    orl a, #0x30 ; Convert tens to ASCII
+    orl a, #0x30h ; Convert tens to ASCII
     lcall ?WriteData; Send to LCD
     mov a, b
-    orl a, #0x30 ; Convert units to ASCII
+    orl a, #0x30h ; Convert units to ASCII
     lcall ?WriteData; Send to LCD
 ret
 
@@ -320,10 +395,10 @@ Load_Configuration:
 ret
 
 Load_Defaults:
-    mov Temp_soak, #0x130 ; Soak Tmp Range is 130-170
-    mov Time_soak, #0x60  ; Range 60-90 seconds
-    mov Temp_refl, #0x220 ; Range 220-245
-    mov Time_refl, #0x30  ; Range 30-60 seconds
+    mov Temp_soak, #130 ; Soak Tmp Range is 130-170
+    mov Time_soak, #0x3C ; Range 60-90 seconds
+    mov Temp_refl, #220 ; Range 220-245
+    mov Time_refl, #0x1E ; Range 30-60 seconds
     ret 
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;off state
@@ -331,11 +406,26 @@ Load_Defaults:
 OFF_STATE:
     ;**CLEAR SCREEN**
     WriteCommand(#0x01)
+
+    ;OFF_STATE1:
     
     jb POWER_BUTTON, $ ; loop while the button is not pressed
 	Wait_Milli_Seconds(#50) ; debounce time
 	jb POWER_BUTTON, OFF_STATE ; it was a bounce, try again
 	jnb POWER_BUTTON, $ ; loop while the button is pressed
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+    ;Wait_Milli_Seconds(#250)
+
     ljmp main
     ret
 ;-------------------------------------------------------------------------------------------------------------------------------
@@ -376,11 +466,46 @@ Check_Temp:
 	mov a, #'\n'
 	lcall putchar
 	pop acc
-	ret
+    ret
     
+
+State0_display:
+    Set_Cursor(1, 1)
+    Send_Constant_String(#STemp)
+    Set_Cursor(1, 6)
+    mov a, Temp_soak
+    lcall SendToLCD
+    
+    Set_Cursor(1,10)
+    Send_Constant_String(#STime)
+    Set_Cursor(1, 14)
+    mov a, Time_soak
+	lcall SendToLCD
+    ;Display_BCD(Time_soak)
+
+    ;Displays Reflow Temp and Time
+    Set_Cursor(2,1)
+    Send_Constant_String(#RTemp)
+    Set_Cursor(2,6)
+    mov a, Temp_refl
+    lcall SendToLCD
+    
+    Set_Cursor(2,10)
+    Send_Constant_String(#RTime)
+    Set_Cursor(2, 14)
+    mov a, Time_refl
+	lcall SendToLCD
 ret
 ;-------------------------------------------------------------------------------------------------------------------------------
 
+;Time wait
+
+Wait_One_Second:
+    Wait_Milli_Seconds(#250)
+    Wait_Milli_Seconds(#250)
+    Wait_Milli_Seconds(#250)
+    Wait_Milli_Seconds(#250)
+ret
 
 ; ==================================================================================================
 
@@ -419,7 +544,7 @@ keep_playing:
 
 stop_playing:
 	clr TR1 ; Stop timer 1
-	setb FLASH_CE  ; Disable SPI Flash
+	;setb FLASH_CE  ; Disable SPI Flash
 	clr SPEAKER ; Turn off speaker.  Removes hissing noise when not playing sound.
 	mov DADH, #0x80 ; middle of range
 	orl DADC, #0b_0100_0000 ; Start DAC by setting GO/BSY=1
@@ -428,40 +553,38 @@ Timer1_ISR_Done:
 	pop psw
 	pop acc
 	reti
-
 ; ==================================================================================================
 
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
 ; for timer 2                     ;
 ;---------------------------------;
-Timer2_Init:
-	mov T2CON, #0 ; Stop timer/counter.  Autoreload mode.
-    mov TH2, #high(TIMER2_RELOAD)
-	mov TL2, #low(TIMER2_RELOAD)
-	; Set the reload value
-	mov RCAP2H, #high(TIMER2_RELOAD)
-	mov RCAP2L, #low(TIMER2_RELOAD)
-	; Init One millisecond interrupt counter.  It is a 16-bit variable made with two 8-bit parts
-	clr a
-	mov Count1ms+0, a
-	mov Count1ms+1, a
-	; Enable the timer and interrupts
-    setb ET2  ; Enable timer 2 interrupt
-    setb TR2  ; Enable timer 2
+Timer2_init:
+mov T2CON, #0
+mov TH2, #high(TIMER2_RELOAD)
+mov TL2, #low(TIMER2_RELOAD)
+
+mov RCAP2H, #high(TIMER2_RELOAD)
+mov RCAP2L, #low(TIMER2_RELOAD)
+
+    clr a
+    mov Count1ms+0, a
+    mov Count1ms+1, a
+    setb ET2
+    setb TR2
     clr enable_clk
-	ret
+    ret
 
 ;---------------------------------;
 ; ISR for timer 2                 ;
 ;---------------------------------;
 Timer2_ISR:
-	clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in ISR
-	cpl P1.0 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+    clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in ISR
+    cpl P1.0 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
 	
 	; The two registers used in the ISR must be saved in the stack
-	push acc
-	push psw
+    push acc
+    push psw
 	
 	; Increment the 16-bit one mili second counter
 	inc Count1ms+0    ; Increment the low 8-bits first
@@ -509,6 +632,8 @@ Timer2_ISR_done:
 ; ==================================================================================================
 
 main:
+
+    
     mov SP, #0x7F
     lcall Timer2_Init
     lcall INI_SPI
@@ -524,42 +649,19 @@ main:
     
 
 state0: ; idle
-;***clear the screen***
-    WriteCommand(#0x01)
+
 ;***initial parameters displayed***
     
     ;Displays Soak Temp and Time
-    Set_Cursor(1, 1)
-    Send_Constant_String(#STemp)
-    Set_Cursor(1, 6)
-    mov a, Temp_soak
-    lcall SendToLCD
-    
-    Set_Cursor(1,10)
-    Send_Constant_String(#STime)
-    Set_Cursor(1, 15)
-	Display_BCD(Time_soak)
-
-    ;Displays Reflow Temp and Time
-    Set_Cursor(2,1)
-    Send_Constant_String(#RTemp)
-    Set_Cursor(2,6)
-    mov a, Temp_refl
-    lcall SendToLCD
-    
-    Set_Cursor(2,10)
-    Send_Constant_String(#RTime)
-    Set_Cursor(2, 15)
-	Display_BCD(Time_refl)
-
+    lcall State0_display
     ;check power on
     lcall CHECK_POWER
-
     ; check the parameters being pressed
     lcall CHECK_STIME
     lcall CHECK_STEMP
     lcall CHECK_RTIME
     lcall CHECK_RTEMP
+    lcall Save_Configuration
 
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
@@ -567,7 +669,7 @@ state0: ; idle
 	jnb NEXT_STATE_BUTTON, $ 
     ljmp state0_done
 state0_done:
-    mov state, #1
+    mov States, #1
     mov State_time, #0
     setb enable_clk
     sjmp state1_beginning
@@ -591,7 +693,7 @@ state1_beginning:
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
     mov a, Temp_oven
-    SendToLCD
+    lcall SendToLCD
     
     Set_Cursor(2,1)
     Send_Constant_String(#state)
@@ -615,7 +717,7 @@ state1: ; ramp to soak
     JZ state1_done ; if equal to, jump to state 2
     JC state1 ; if less than, go back to state1
 state1_done:
-    mov state, #2
+    mov States, #2
     ;set State_time = 0
     sjmp state2_beginning
 
@@ -638,7 +740,7 @@ state2_beginning:
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
     mov a, Temp_oven
-    SendToLCD
+    lcall SendToLCD
     
     Send_Constant_String(#state)
     Set_Cursor(2,7)
@@ -650,27 +752,24 @@ state2:
 
     ;on
     setb OVEN_POWER
-    Wait_Milli_Seconds(#250)
+    lcall Wait_One_Second
     ;off
     clr OVEN_POWER
     mov r5, #0
-    4sec_loop:
-        ; loop back to state2 if run time is less than soak time
-        mov a, Time_soak
-        subb a, State_time
-        cjne a, #0, state2
-        Set_Cursor(1,5)
-	    Display_BCD(Run_time_minutes)
-        Set_Cursor(1,7)
-        Send_Constant_String(#colon)
-        Set_Cursor(1,8)
-        Display_BCD(Run_time_seconds)
-        Wait_Milli_Seconds(#250)
-        Wait_Milli_Seconds(#250)
-        Wait_Milli_Seconds(#250)
-        Wait_Milli_Seconds(#250)
-        inc r5
-        cjne r5, #4, 4sec_loop
+four_sec_loop:
+    ; loop back to state2 if run time is less than soak time
+    mov a, Time_soak
+    subb a, State_time
+    cjne a, #0, state2
+    Set_Cursor(1,5)
+	Display_BCD(Run_time_minutes)
+    Set_Cursor(1,7)
+    Send_Constant_String(#colon)
+    Set_Cursor(1,8)
+    Display_BCD(Run_time_seconds)
+    Wait_Milli_Seconds(#250)
+    inc r5
+    cjne r5, #16, four_sec_loop
         
     
     ; loop back to state2 if run time is less than soak time
@@ -690,18 +789,15 @@ state3_beginning:
     WriteCommand(#0x01)
     Set_Cursor(1, 1)
     Send_Constant_String(#time)
-    Set_Cursor(1, 5)
 	Display_BCD(Run_time_minutes)
-    Set_Cursor(1,7)
     Send_Constant_String(#colon)
-    Set_Cursor(1,8)
     Display_BCD(Run_time_seconds)
     
     Set_Cursor(1,10)
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
     mov a, Temp_oven
-    SendToLCD
+    lcall SendToLCD
     
     Set_Cursor(2,1)
     Send_Constant_String(#state)
@@ -715,9 +811,7 @@ state3:
     ; update display
     Set_Cursor(1,5)
 	Display_BCD(Run_time_minutes)
-    Set_Cursor(1,7)
     Send_Constant_String(#colon)
-    Set_Cursor(1,8)
     Display_BCD(Run_time_seconds)
 
     mov a, Temp_oven
@@ -738,9 +832,8 @@ state4_beginning:
     WriteCommand(#0x01)
     Set_Cursor(1, 1)
     Send_Constant_String(#time)
-    Set_Cursor(1, 5)
 	Display_BCD(Run_time_minutes)
-    Set_Cursor(1,6)
+
     Send_Constant_String(#colon)
     Set_Cursor(1,7)
     Display_BCD(Run_time_seconds)
@@ -749,7 +842,7 @@ state4_beginning:
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
     mov a, Temp_oven
-    SendToLCD
+    lcall SendToLCD
     
     Set_Cursor(2,1)  
     Send_Constant_String(#state)
@@ -763,11 +856,11 @@ state4:
 
     ;on
     setb OVEN_POWER
-    Wait_Milli_Seconds(#250)
+    lcall Wait_One_Second
     ;off
     clr OVEN_POWER
     mov r5, #0
-    4sec_loop2:
+    four_sec_loop2:
         ; loop back to state2 if run time is less than soak time
         mov a, Time_refl
         subb a, State_time
@@ -777,11 +870,9 @@ state4:
         Set_Cursor(1,7)
         Display_BCD(Run_time_seconds)
         Wait_Milli_Seconds(#250)
-        Wait_Milli_Seconds(#250)
-        Wait_Milli_Seconds(#250)
-        Wait_Milli_Seconds(#250)
+
         inc r5
-        cjne r5, #4, 4sec_loop2
+        cjne r5, #16, four_sec_loop2
         
     
     ; loop back to state2 if run time is less than soak time
@@ -813,7 +904,7 @@ state5_beginning: ; turn oven off
     Send_Constant_String(#temp)
     Set_Cursor(1,14)
     mov a, Temp_oven
-    SendToLCD
+    lcall SendToLCD
     
     Set_Cursor(2,1)
     Send_Constant_String(#state)
@@ -839,6 +930,6 @@ state5:
 
 state5_done:
     mov State_time, #0
-    ljmp state0_beginning
+    ljmp main
 
 END
