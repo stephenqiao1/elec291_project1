@@ -667,12 +667,10 @@ state0: ; idle
     Wait_Milli_Seconds(#50) ; debounce time
 	jb NEXT_STATE_BUTTON, state0 ; if button not pressed, loop
 	jnb NEXT_STATE_BUTTON, $ 
-    ljmp state0_done
 state0_done:
     mov States, #1
     mov State_time, #0
     setb enable_clk
-    sjmp state1_beginning
 
 state1_beginning:
     
