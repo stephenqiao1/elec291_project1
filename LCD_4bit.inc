@@ -224,5 +224,3 @@ endmac
     lcall putchar
     pop acc
 	ret
-
-	

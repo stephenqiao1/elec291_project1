@@ -4,59 +4,61 @@ $LIST
 
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;These EQU must match the wiring between the microcontroller and ADC
+CLK  EQU 22118400
+TIMER1_RATE    EQU 22050     ; 22050Hz is the sampling rate of the wav file we are playing
+TIMER1_RELOAD  EQU 0x10000-(CLK/TIMER1_RATE)
+BAUD equ 115200
+BRG_VAL equ (0x100-(CLK/(16*BAUD)))
 
-CLK             EQU 22118400  ; Microcontroller system clock frequency in Hz
-TIMER1_RATE     EQU 22050     ; 22050Hz is the sampling rate of the wav file we are playing
-TIMER1_RELOAD   EQU 0x10000-(CLK/TIMER1_RATE)
-BAUD            equ 115200
-BRG_VAL         equ (0x100-(CLK/(16*BAUD)))
-
-TIMER2_RATE     EQU 1000     ; 1000Hz, for a timer tick of 1ms
-TIMER2_RELOAD   EQU (65536-(CLK/TIMER2_RATE))
+TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
+TIMER2_RELOAD EQU (65536-(CLK/TIMER2_RATE))
 
 
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;Button Pin Mapping
-NEXT_STATE_BUTTON   equ P0.5
-STIME_BUTTON        equ P0.2
-STEMP_BUTTON        equ P0.3
-RTIME_BUTTON        equ P0.4
-RTEMP_BUTTON        equ P0.6
-POWER_BUTTON        equ P4.5
-SHIFT_BUTTON        equ p0.0
+NEXT_STATE_BUTTON  equ P0.5
+STIME_BUTTON    equ P0.2
+STEMP_BUTTON    equ P0.3
+RTIME_BUTTON    equ P0.4
+RTEMP_BUTTON    equ P0.6
+POWER_BUTTON    equ P4.5
+SHIFT_BUTTON    equ p0.0
 
 ;Output Pins
-OVEN_POWER          equ P0.7
-SPEAKER             equ P2.6
+OVEN_POWER      equ P0.7
+SPEAKER         equ P2.6
 
-PWM_OUTPUT          equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
+PWM_OUTPUT    equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
 
-;Thermocouple Wire Pins
-CE_ADC              EQU  P1.7
-MY_MOSI             EQU  P1.6
-MY_MISO             EQU  P1.5
-MY_SCLK             EQU  P1.4 
+FLASH_CE        equ P0.0
+
+;Thermowire Pins
+CE_ADC    EQU  P1.7
+MY_MOSI   EQU  P1.6
+MY_MISO   EQU  P1.5
+MY_SCLK   EQU  P1.4 
+
+; Commands supported by the SPI flash memory according to the datasheet
+WRITE_ENABLE     EQU 0x06  ; Address:0 Dummy:0 Num:0
+WRITE_DISABLE    EQU 0x04  ; Address:0 Dummy:0 Num:0
+READ_STATUS      EQU 0x05  ; Address:0 Dummy:0 Num:1 to infinite
+READ_BYTES       EQU 0x03  ; Address:3 Dummy:0 Num:1 to infinite
+READ_SILICON_ID  EQU 0xab  ; Address:0 Dummy:3 Num:1 to infinite
+FAST_READ        EQU 0x0b  ; Address:3 Dummy:1 Num:1 to infinite
+WRITE_STATUS     EQU 0x01  ; Address:0 Dummy:0 Num:1
+WRITE_BYTES      EQU 0x02  ; Address:3 Dummy:0 Num:1 to 256
+ERASE_ALL        EQU 0xc7  ; Address:0 Dummy:0 Num:0
+ERASE_BLOCK      EQU 0xd8  ; Address:3 Dummy:0 Num:0
+READ_DEVICE_ID   EQU 0x9f  ; Address:0 Dummy:2 Num:1 to infinite
 
 ; These 'equ' must match the hardware wiring
-LCD_RS              equ P3.2
+LCD_RS equ P3.2
 ;LCD_RW equ PX.X ; Not used in this code, connect the pin to GND
-LCD_E               equ P3.3
-LCD_D4              equ P3.4
-LCD_D5              equ P3.5
-LCD_D6              equ P3.6
-LCD_D7              equ P3.7
-
-WRITE_ENABLE        EQU 0x06  ; Address:0 Dummy:0 Num:0
-WRITE_DISABLE       EQU 0x04  ; Address:0 Dummy:0 Num:0
-READ_STATUS         EQU 0x05  ; Address:0 Dummy:0 Num:1 to infinite
-READ_BYTES          EQU 0x03  ; Address:3 Dummy:0 Num:1 to infinite
-READ_SILICON_ID     EQU 0xab  ; Address:0 Dummy:3 Num:1 to infinite
-FAST_READ           EQU 0x0b  ; Address:3 Dummy:1 Num:1 to infinite
-WRITE_STATUS        EQU 0x01  ; Address:0 Dummy:0 Num:1
-WRITE_BYTES         EQU 0x02  ; Address:3 Dummy:0 Num:1 to 256
-ERASE_ALL           EQU 0xc7  ; Address:0 Dummy:0 Num:0
-ERASE_BLOCK         EQU 0xd8  ; Address:3 Dummy:0 Num:0
-READ_DEVICE_ID      EQU 0x9f  ; Address:0 Dummy:2 Num:1 to infinite
+LCD_E  equ P3.3
+LCD_D4 equ P3.4
+LCD_D5 equ P3.5
+LCD_D6 equ P3.6
+LCD_D7 equ P3.7
 
 ;-------------------------------------------------------------------------------------------------------------------------------
 
@@ -75,7 +77,7 @@ org 0x000B
 org 0x0013
 	reti
 
-; Timer/Counter 1 overflow interrupt vector. Used to replay the wave file
+; Timer/Counter 1 overflow interrupt vector
 org 0x001B
 	ljmp Timer1_ISR
 
@@ -90,7 +92,7 @@ org 0x002B
 ; Place our variables here
 DSEG at 0x30 ; Before the state machine!
 Count1ms:         ds 2 ; Used to determine when one second has passed
-pwm_ratio:        ds 2
+Count5sec:         ds 1
 States:           ds 1
 Temp_soak:        ds 1
 Time_soak:        ds 1
@@ -104,7 +106,8 @@ x:                ds 4
 y:                ds 4
 bcd:              ds 5
 Result:           ds 2
-w:                ds 3  ; 24-bit play counter. Decremented in Timer 1 ISR
+w:                ds 3
+pwm_ratio:        ds 2
 
 $NOLIST
 $include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
@@ -114,12 +117,11 @@ $NOLIST
 $include(math32.inc)
 $LIST
 
-
-
 bseg
-one_seconds_flag: dbit 1
-enable_clk:       dbit 1
-mf:               dbit 1
+one_seconds_flag:  dbit 1
+five_seconds_flag: dbit 1
+enable_clk:        dbit 1
+mf:                dbit 1
 
 cseg
 
@@ -177,7 +179,7 @@ DO_SPI_G_LOOP:
 	clr MY_SCLK
 	djnz R2, DO_SPI_G_LOOP
 	pop acc
-	ret
+ret
 
 Send_SPI:
 	SPIBIT MAC
@@ -344,23 +346,157 @@ CHECK_POWER:
 CHECK_POWER_END:
 ret
 
+SOUND_FSM:
+;state_0_sound:
+; check if 5 seconds has passed, if yes go to state 1
+cjne Run_time_seconds, #5, state_0_sound
+lcall state_1_sound
+
+state_1_sound:
+; check if temp is greater than 100, if yes go to state 2
+; check if temp is less than 100, if yes go to state 5
+mov a, Temp_oven
+subb a, #100
+jnc state_2_sound
+jc state_5_sound
+
+state_2_sound:
+; divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
+; go to state_3_sound
+mov a, Temp_oven
+load_X(a)
+load_y(#100)
+lcall div32
+subb a, #1
+jz "play sound 100"
+subb a, #2
+jz "play sound 200"
+lcall state_3_sound
+
+state_3_sound:
+; check remainder of temp, if it is 0, go back to state_0_sound
+    ; ***how to get remainder of 23/4***
+    ; integer division of 23 and 4 = 5
+    ; multiply 5 by 4 = 20
+    ; subtract 23 by 20 = 3 <--- remainder
+; if not 0, go to state_4_sound
+
+mov a, Temp_oven 
+load_X(a)
+load_y(#100)
+lcall div32
+load_X(a)
+load_y(#100)
+lcall mul32
+mov r0, a 
+mov a, Temp_oven
+subb a, r0
+jz state_0_sound
+jnz state_4_sound
+
+state_4_sound
+; check if the remainder of temp divided by 100 is greater or equal to than 20, if yes go to state_7_sound
+; if not go to state_5_sound
+
+; load_X(a)
+; load_y(#100)
+; subb a, #20
+; jnc state_7_sound
+; jz state_7_sound
+; jc state_5_sound
+
+; state_5_sound;
+; play number from 1 to 19, based off remainder from temp divided by 100
+; go to state_6_sound
+
+; state_6_sound; 
+; go to state_0_sound
+
+; lcall state_0_sound
+
+; state_7_sound;
+; play tenths number, by dividing temp by 100 finding the remainder, then dividing the remainder by 10, and correponding the value to the correct 20 - 90 value
+; go to state_8_sound
+
+; state_8_sound;
+; check if there is a ones remainder, if yes go to state_9_sound
+; if not go to state_0_sound
+
+; state_9_sound
+; play ones remainder
+
+
+;PLAYBACK_TEMP MAC
+;    mov r0, %0
+; ****INITIALIZATION****
+; Configure SPI pins and turn off speaker
+;	anl P2M0, #0b_1100_1110
+;	orl P2M1, #0b_0011_0001
+;	setb MY_MISO  ; Configured as input
+;	setb FLASH_CE ; CS=1 for SPI flash memory
+;	clr MY_SCLK   ; Rest state of SCLK=0
+;	clr SPEAKER   ; Turn off speaker.
+	
+	; Configure timer 1
+;	anl	TMOD, #0x0F ; Clear the bits of timer 1 in TMOD
+;	orl	TMOD, #0x10 ; Set timer 1 in 16-bit timer mode.  Don't change the bits of timer 0
+;	mov TH1, #high(TIMER1_RELOAD)
+;	mov TL1, #low(TIMER1_RELOAD)
+	; Set autoreload value
+;	mov RH1, #high(TIMER1_RELOAD)
+;	mov RL1, #low(TIMER1_RELOAD)
+
+	; Enable the timer and interrupts
+;    setb ET1  ; Enable timer 1 interrupt
+	; setb TR1 ; Timer 1 is only enabled to play stored sound
+
+	; Configure the DAC.  The DAC output we are using is P2.3, but P2.2 is also reserved.
+;	mov DADI, #0b_1010_0000 ; ACON=1
+;	mov DADC, #0b_0011_1010 ; Enabled, DAC mode, Left adjusted, CLK/4
+;	mov DADH, #0x80 ; Middle of scale
+;	mov DADL, #0
+;	;orl DADC, #0b_0100_0000 ; Start DAC by GO/BSY=1
+
+    ; ***play audio***
+    ;clr TR1 ; Stop Timer 1 ISR from playing previous request
+    ;setb FLASH_CE 
+    ;clr SPEAKER ; Turn off speaker
+
+    ;clr FLASH_CE ; Enable SPI Flash
+    ;mov READ_BYTES, #3
+    ;mov a, #READ_BYTES
+    ;lcall Send_SPI
+    ; Set the initial position in memory where to start playing
+    
+   ; mov a, %0 ; change initial position
+  ;  lcall Send_SPI
+ ;   mov a, %0+1 ; next memory position
+;    lcall Send_SPI 
+;    mov a, %0+2 ; next memory position
+;    lcall Send_SPI
+;    mov a, %0+3 ; next memory position
+;    lcall Send_SPI 
+;    mov a, %0+4
+;    lcall Send_SPI
+;    mov a, %0+5
+;    lcall Send_SPI
+;    mov a, %0+6
+;    lcall Send_SPI
+;    mov a, %0+7
+;    lcall Send_SPI
+;    mov a, %0 ; request first byte to send to DAC
+;    lcall Send_SPI
+
+    ; How many bytes to play?
+    ;mov w+2, #0x3f //63
+    ;mov w+1, #0xff //255
+    ;mov w+0, #0xff 
+ 
+    ;setb SPEAKER ;Turn on speaker
+    ;setb TR1 ;Start playback by enabling Timer1  
+    
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;***LCD FXNS
-
-SendToLCD:
-    mov b, #100
-    div ab
-    orl a, #0x30h ; Convert hundreds to ASCII
-    lcall ?WriteData ; Send to LCD
-    mov a, b    ; Remainder is in register b
-    mov b, #10
-    div ab
-    orl a, #0x30h ; Convert tens to ASCII
-    lcall ?WriteData; Send to LCD
-    mov a, b
-    orl a, #0x30h ; Convert units to ASCII
-    lcall ?WriteData; Send to LCD
-ret
 
 Display_lower_BCD mac
     push ar0
@@ -379,6 +515,22 @@ endmac
     pop acc
 ret
 
+
+SendToLCD:
+    mov b, #100
+    div ab
+    orl a, #0x30h ; Convert hundreds to ASCII
+    lcall ?WriteData ; Send to LCD
+    mov a, b    ; Remainder is in register b
+    mov b, #10
+    div ab
+    orl a, #0x30h ; Convert tens to ASCII
+    lcall ?WriteData; Send to LCD
+    mov a, b
+    orl a, #0x30h ; Convert units to ASCII
+    lcall ?WriteData; Send to LCD
+ret
+
 Initialize_State_Display:
 
     ;***clear the screen and set new display***
@@ -391,7 +543,6 @@ Initialize_State_Display:
     Set_Cursor(1,6)
     Send_Constant_String(#colon)
    
-    
     Set_Cursor(1,10)
     Send_Constant_String(#temp)
     
@@ -409,6 +560,42 @@ Update_Display:
     ;SendToLCD(Temp_oven)
 ret
 
+State0_display:
+    Set_Cursor(1, 1)
+    Send_Constant_String(#STemp)
+    Set_Cursor(1, 6)
+    mov a, Temp_soak
+    lcall SendToLCD
+    
+    Set_Cursor(1,10)
+    Send_Constant_String(#STime)
+    Set_Cursor(1, 14)
+    mov a, Time_soak
+	lcall SendToLCD
+    ;Display_BCD(Time_soak)
+
+    ;Displays Reflow Temp and Time
+    Set_Cursor(2,1)
+    Send_Constant_String(#RTemp)
+    Set_Cursor(2,6)
+    mov a, Temp_refl
+    lcall SendToLCD
+    
+    Set_Cursor(2,10)
+    Send_Constant_String(#RTime)
+    Set_Cursor(2, 14)
+    mov a, Time_refl
+	lcall SendToLCD
+ret
+
+Display_3_digit_BCD:
+	Set_Cursor(1, 14)
+	Display_lower_BCD(bcd+1)
+	Display_BCD(bcd+0)
+ret
+
+
+
 ;The following functions store and restore the values--------------------------------------------------------------------------
 loadbyte mac
     mov a, %0
@@ -417,22 +604,25 @@ loadbyte mac
 endmac
 
 Save_Configuration:
+    push IE ; Save the current state of bit EA in the stack
+    clr EA ; Disable interrupts
     mov FCON, #0x08 ; Page Buffer Mapping Enabled (FPS = 1)
     mov dptr, #0x7f80 ; Last page of flash memory
-; Save variables
-    loadbyte(Temp_soak) ; @0x7f80
-    loadbyte(Time_soak) ; @0x7f81
-    loadbyte(Temp_refl) ; @0x7f82
-    loadbyte(Time_refl) ; @0x7f83
+    ; Save variables
+    loadbyte(temp_soak) ; @0x7f80
+    loadbyte(time_soak) ; @0x7f81
+    loadbyte(temp_refl) ; @0x7f82
+    loadbyte(time_refl) ; @0x7f83
     loadbyte(#0x55) ; First key value @0x7f84
     loadbyte(#0xAA) ; Second key value @0x7f85
-    mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0)
-    orl EECON, #0b01000000 ; Enable auto-erase on next write sequence
+    mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0) 
+    orl EECON, #0b01000000 ; Enable auto-erase on next write sequence  
     mov FCON, #0x50 ; Write trigger first byte
     mov FCON, #0xA0 ; Write trigger second byte
-; CPU idles until writing of flash completes.
+    ; CPU idles until writing of flash completes.
     mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0)
     anl EECON, #0b10111111 ; Disable auto-erase
+    pop IE ; Restore the state of bit EA from the stack
 ret
 
 getbyte mac
@@ -482,6 +672,10 @@ ret
 
 ;***CHECK TEMPERATURE BY READING VOLTAGE AND CONVERTING
 Check_Temp:
+    
+    jnb one_seconds_flag, Check_Temp_done
+    clr one_seconds_flag
+    
     clr CE_ADC
 	mov R0, #00000001B ; Start bit:1
 	lcall DO_SPI_G
@@ -494,58 +688,48 @@ Check_Temp:
 	lcall DO_SPI_G
 	mov Result, R1     ; R1 contains bits 0 to 7.  Save result low.
 	setb CE_ADC
-	
+
+	Wait_Milli_Seconds(#10)
     ; Copy the 10-bits of the ADC conversion into the 32-bits of 'x'
 	mov x+0, result+0
 	mov x+1, result+1
 	mov x+2, #0
 	mov x+3, #0
 	
-    ;conversion from voltage to temperature unit
-    load_Y(1000)
-    lcall mul32
-    load_Y(41)
-    lcall div32
+;Check_Temp_done_2:
+    ;jnb one_seconds_flag, Check_Temp_done
+    ;mov a, result+1
+    ;Set_Cursor(1,14)
+    ;lcall SendToLCD 
+    ;Set_Cursor(1,14)
+    ;mov a, x+0
+    ;lcall SendToLCD
+    ;mov Temp_oven, a
     
-	; The 4-bytes of x have the temperature in binary
+    ;mov a, States
+    ;cjne a, #0, Display_Temp_BCD
+    ;sjmp Send_Temp_Port
+	
+    ; The 4-bytes of x have the temperature in binary
+Display_Temp_BCD:
 	lcall hex2bcd ; converts binary in x to BCD in BCD
 
-	Send_BCD(bcd)
+    lcall Display_3_digit_BCD
+
+Send_Temp_Port:
+    Send_BCD(bcd+4)
+    Send_BCD(bcd+3)
+    Send_BCD(bcd+2)
+	Send_BCD(bcd+1)
+    Send_BCD(bcd+0)
 	mov a, #'\r'
 	lcall putchar
 	mov a, #'\n'
 	lcall putchar
-	pop acc
+Check_Temp_done:
     ret
     
 
-State0_display:
-    Set_Cursor(1, 1)
-    Send_Constant_String(#STemp)
-    Set_Cursor(1, 6)
-    mov a, Temp_soak
-    lcall SendToLCD
-    
-    Set_Cursor(1,10)
-    Send_Constant_String(#STime)
-    Set_Cursor(1, 14)
-    mov a, Time_soak
-	lcall SendToLCD
-    ;Display_BCD(Time_soak)
-
-    ;Displays Reflow Temp and Time
-    Set_Cursor(2,1)
-    Send_Constant_String(#RTemp)
-    Set_Cursor(2,6)
-    mov a, Temp_refl
-    lcall SendToLCD
-    
-    Set_Cursor(2,10)
-    Send_Constant_String(#RTime)
-    Set_Cursor(2, 14)
-    mov a, Time_refl
-	lcall SendToLCD
-ret
 ;-------------------------------------------------------------------------------------------------------------------------------
 
 ;Time wait
@@ -557,7 +741,7 @@ Wait_One_Second:
     Wait_Milli_Seconds(#250)
 ret
 
-;Timer 1 subroutines for the speaker -------------------------------------------------------------------------------------------
+; ==================================================================================================
 
 ;-------------------------------------;
 ; ISR for Timer 1.  Used to playback  ;
@@ -594,8 +778,8 @@ keep_playing:
 
 stop_playing:
 	clr TR1 ; Stop timer 1
-	setb CE_ADC  ; Disable SPI Flash
-	;clr SPEAKER ; Turn off speaker.  Removes hissing noise when not playing sound.
+	;setb FLASH_CE  ; Disable SPI Flash
+	clr SPEAKER ; Turn off speaker.  Removes hissing noise when not playing sound.
 	mov DADH, #0x80 ; middle of range
 	orl DADC, #0b_0100_0000 ; Start DAC by setting GO/BSY=1
 
@@ -603,23 +787,24 @@ Timer1_ISR_Done:
 	pop psw
 	pop acc
 	reti
-;-------------------------------------------------------------------------------------------------------------------------------
+; ==================================================================================================
 
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
 ; for timer 2                     ;
 ;---------------------------------;
 Timer2_init:
-mov T2CON, #0
-mov TH2, #high(TIMER2_RELOAD)
-mov TL2, #low(TIMER2_RELOAD)
+    mov T2CON, #0
+    mov TH2, #high(TIMER2_RELOAD)
+    mov TL2, #low(TIMER2_RELOAD)
 
-mov RCAP2H, #high(TIMER2_RELOAD)
-mov RCAP2L, #low(TIMER2_RELOAD)
+    mov RCAP2H, #high(TIMER2_RELOAD)
+    mov RCAP2L, #low(TIMER2_RELOAD)
 
     clr a
     mov Count1ms+0, a
     mov Count1ms+1, a
+    mov Count5sec , a
     setb ET2
     setb TR2
     clr enable_clk
@@ -663,6 +848,15 @@ Inc_Done:
 	
 	; 1000 milliseconds have passed.  Set a flag so the main program knows
 	setb one_seconds_flag ; Let the main program know one second had passed
+    
+    inc Count5sec
+    mov a, Count5sec
+    cjne a, #5, Set_5sec_flag_done
+    setb five_seconds_flag
+    clr a
+    mov Count5sec, a
+    
+Set_5sec_flag_done:
 	clr a
 	mov Count1ms+0, a
 	mov Count1ms+1, a
@@ -690,39 +884,6 @@ Timer2_ISR_done:
 	pop acc
 	reti
 
-Init_all:
-    ; Configure SPI pins as open drain outputs (They need 1k pull-ups to 3.3V)and turn off speaker
-	orl P2M0, #0b_1100_1110
-	orl P2M1, #0b_0011_0001
-	setb MY_MISO  ; Configured as input
-	setb CE_ADC ; CS=1 for SPI flash memory
-	clr MY_SCLK   ; Rest state of SCLK=0
-	clr SPEAKER   ; Turn off speaker.
-	
-	; Configure timer 1
-	anl	TMOD, #0x0F ; Clear the bits of timer 1 in TMOD
-	orl	TMOD, #0x10 ; Set timer 1 in 16-bit timer mode.  Don't change the bits of timer 0
-	mov TH1, #high(TIMER1_RELOAD)
-	mov TL1, #low(TIMER1_RELOAD)
-	; Set autoreload value
-	mov RH1, #high(TIMER1_RELOAD)
-	mov RL1, #low(TIMER1_RELOAD)
-
-	; Enable the timer and interrupts
-    setb ET1  ; Enable timer 1 interrupt
-	; setb TR1 ; Timer 1 is only enabled to play stored sound
-
-	; Configure the DAC.  The DAC output we are using is P2.3, but P2.2 is also reserved.
-	mov DADI, #0b_1010_0000 ; ACON=1
-	mov DADC, #0b_0011_1010 ; Enabled, DAC mode, Left adjusted, CLK/4
-	mov DADH, #0x80 ; Middle of scale
-	mov DADL, #0
-	orl DADC, #0b_0100_0000 ; Start DAC by GO/BSY=1
-check_DAC_init:
-	mov a, DADC
-	jb acc.6, check_DAC_init ; Wait for DAC to finish
-	
-	setb EA ; Enable interrupts
 
 ; ==================================================================================================
 
@@ -742,12 +903,14 @@ main:
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
+    mov States, #0
     
 state0: ; idle
 
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
+    ;mov States, #0
 
 ;***initial parameters displayed***
     
@@ -761,6 +924,8 @@ state0: ; idle
     lcall CHECK_RTIME
     lcall CHECK_RTEMP
     lcall Save_Configuration
+    
+    ;lcall Check_Temp
 
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
@@ -770,6 +935,8 @@ state0_done:
     mov States, #1
     mov State_time, #0
     setb enable_clk
+   
+     
 
 state1_beginning:
     
@@ -794,6 +961,7 @@ state1: ; ramp to soak
     lcall CHECK_POWER
     ;Update Time and Temp
     lcall Update_Display
+    lcall Check_Temp
 
     ; check if temp is below 150 
     ;MOV A, Temp_soak           
@@ -1009,6 +1177,7 @@ state5:
 
 state5_done:
     mov State_time, #0
+    mov States, #0
     ljmp main
 
 END
