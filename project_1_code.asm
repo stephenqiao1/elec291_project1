@@ -13,7 +13,7 @@ BRG_VAL equ (0x100-(CLK/(16*BAUD)))
 TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
 TIMER2_RELOAD EQU (65536-(CLK/TIMER2_RATE))
 
-
+;shjfjdfs
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;Button Pin Mapping
 NEXT_STATE_BUTTON  equ P0.5
