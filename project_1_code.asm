@@ -4,48 +4,59 @@ $LIST
 
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;These EQU must match the wiring between the microcontroller and ADC
-CLK  EQU 22118400
-TIMER1_RATE    EQU 22050     ; 22050Hz is the sampling rate of the wav file we are playing
-TIMER1_RELOAD  EQU 0x10000-(SYSCLK/TIMER1_RATE)
-BAUD equ 115200
-BRG_VAL equ (0x100-(CLK/(16*BAUD)))
 
-TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
-TIMER2_RELOAD EQU (65536-(CLK/TIMER2_RATE))
+CLK             EQU 22118400  ; Microcontroller system clock frequency in Hz
+TIMER1_RATE     EQU 22050     ; 22050Hz is the sampling rate of the wav file we are playing
+TIMER1_RELOAD   EQU 0x10000-(CLK/TIMER1_RATE)
+BAUD            equ 115200
+BRG_VAL         equ (0x100-(CLK/(16*BAUD)))
+
+TIMER2_RATE     EQU 1000     ; 1000Hz, for a timer tick of 1ms
+TIMER2_RELOAD   EQU (65536-(CLK/TIMER2_RATE))
 
 
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;Button Pin Mapping
-NEXT_STATE_BUTTON  equ P0.5
-STIME_BUTTON    equ P0.2
-STEMP_BUTTON    equ P0.3
-RTIME_BUTTON    equ P0.4
-RTEMP_BUTTON    equ P0.6
-POWER_BUTTON    equ P4.5
-SHIFT_BUTTON    equ p0.0
+NEXT_STATE_BUTTON   equ P0.5
+STIME_BUTTON        equ P0.2
+STEMP_BUTTON        equ P0.3
+RTIME_BUTTON        equ P0.4
+RTEMP_BUTTON        equ P0.6
+POWER_BUTTON        equ P4.5
+SHIFT_BUTTON        equ p0.0
 
 ;Output Pins
-OVEN_POWER      equ P0.7
-SPEAKER         equ P2.6
+OVEN_POWER          equ P0.7
+SPEAKER             equ P2.6
 
-PWM_OUTPUT    equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
+PWM_OUTPUT          equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
 
-;FLASH_CE        equ P0.
-
-;Thermowire Pins
-CE_ADC    EQU  P1.7
-MY_MOSI   EQU  P1.6
-MY_MISO   EQU  P1.5
-MY_SCLK   EQU  P1.4 
+;Thermocouple Wire Pins
+CE_ADC              EQU  P1.7
+MY_MOSI             EQU  P1.6
+MY_MISO             EQU  P1.5
+MY_SCLK             EQU  P1.4 
 
 ; These 'equ' must match the hardware wiring
-LCD_RS equ P3.2
+LCD_RS              equ P3.2
 ;LCD_RW equ PX.X ; Not used in this code, connect the pin to GND
-LCD_E  equ P3.3
-LCD_D4 equ P3.4
-LCD_D5 equ P3.5
-LCD_D6 equ P3.6
-LCD_D7 equ P3.7
+LCD_E               equ P3.3
+LCD_D4              equ P3.4
+LCD_D5              equ P3.5
+LCD_D6              equ P3.6
+LCD_D7              equ P3.7
+
+WRITE_ENABLE        EQU 0x06  ; Address:0 Dummy:0 Num:0
+WRITE_DISABLE       EQU 0x04  ; Address:0 Dummy:0 Num:0
+READ_STATUS         EQU 0x05  ; Address:0 Dummy:0 Num:1 to infinite
+READ_BYTES          EQU 0x03  ; Address:3 Dummy:0 Num:1 to infinite
+READ_SILICON_ID     EQU 0xab  ; Address:0 Dummy:3 Num:1 to infinite
+FAST_READ           EQU 0x0b  ; Address:3 Dummy:1 Num:1 to infinite
+WRITE_STATUS        EQU 0x01  ; Address:0 Dummy:0 Num:1
+WRITE_BYTES         EQU 0x02  ; Address:3 Dummy:0 Num:1 to 256
+ERASE_ALL           EQU 0xc7  ; Address:0 Dummy:0 Num:0
+ERASE_BLOCK         EQU 0xd8  ; Address:3 Dummy:0 Num:0
+READ_DEVICE_ID      EQU 0x9f  ; Address:0 Dummy:2 Num:1 to infinite
 
 ;-------------------------------------------------------------------------------------------------------------------------------
 
@@ -64,7 +75,7 @@ org 0x000B
 org 0x0013
 	reti
 
-; Timer/Counter 1 overflow interrupt vector
+; Timer/Counter 1 overflow interrupt vector. Used to replay the wave file
 org 0x001B
 	ljmp Timer1_ISR
 
@@ -93,7 +104,7 @@ x:                ds 4
 y:                ds 4
 bcd:              ds 5
 Result:           ds 2
-w:                ds 3
+w:                ds 3  ; 24-bit play counter. Decremented in Timer 1 ISR
 
 $NOLIST
 $include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
@@ -546,7 +557,7 @@ Wait_One_Second:
     Wait_Milli_Seconds(#250)
 ret
 
-; ==================================================================================================
+;Timer 1 subroutines for the speaker -------------------------------------------------------------------------------------------
 
 ;-------------------------------------;
 ; ISR for Timer 1.  Used to playback  ;
@@ -583,8 +594,8 @@ keep_playing:
 
 stop_playing:
 	clr TR1 ; Stop timer 1
-	;setb FLASH_CE  ; Disable SPI Flash
-	clr SPEAKER ; Turn off speaker.  Removes hissing noise when not playing sound.
+	setb CE_ADC  ; Disable SPI Flash
+	;clr SPEAKER ; Turn off speaker.  Removes hissing noise when not playing sound.
 	mov DADH, #0x80 ; middle of range
 	orl DADC, #0b_0100_0000 ; Start DAC by setting GO/BSY=1
 
@@ -592,7 +603,7 @@ Timer1_ISR_Done:
 	pop psw
 	pop acc
 	reti
-; ==================================================================================================
+;-------------------------------------------------------------------------------------------------------------------------------
 
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
@@ -679,6 +690,39 @@ Timer2_ISR_done:
 	pop acc
 	reti
 
+Init_all:
+    ; Configure SPI pins as open drain outputs (They need 1k pull-ups to 3.3V)and turn off speaker
+	orl P2M0, #0b_1100_1110
+	orl P2M1, #0b_0011_0001
+	setb MY_MISO  ; Configured as input
+	setb CE_ADC ; CS=1 for SPI flash memory
+	clr MY_SCLK   ; Rest state of SCLK=0
+	clr SPEAKER   ; Turn off speaker.
+	
+	; Configure timer 1
+	anl	TMOD, #0x0F ; Clear the bits of timer 1 in TMOD
+	orl	TMOD, #0x10 ; Set timer 1 in 16-bit timer mode.  Don't change the bits of timer 0
+	mov TH1, #high(TIMER1_RELOAD)
+	mov TL1, #low(TIMER1_RELOAD)
+	; Set autoreload value
+	mov RH1, #high(TIMER1_RELOAD)
+	mov RL1, #low(TIMER1_RELOAD)
+
+	; Enable the timer and interrupts
+    setb ET1  ; Enable timer 1 interrupt
+	; setb TR1 ; Timer 1 is only enabled to play stored sound
+
+	; Configure the DAC.  The DAC output we are using is P2.3, but P2.2 is also reserved.
+	mov DADI, #0b_1010_0000 ; ACON=1
+	mov DADC, #0b_0011_1010 ; Enabled, DAC mode, Left adjusted, CLK/4
+	mov DADH, #0x80 ; Middle of scale
+	mov DADL, #0
+	orl DADC, #0b_0100_0000 ; Start DAC by GO/BSY=1
+check_DAC_init:
+	mov a, DADC
+	jb acc.6, check_DAC_init ; Wait for DAC to finish
+	
+	setb EA ; Enable interrupts
 
 ; ==================================================================================================
 
@@ -726,8 +770,6 @@ state0_done:
     mov States, #1
     mov State_time, #0
     setb enable_clk
-   
-     
 
 state1_beginning:
     

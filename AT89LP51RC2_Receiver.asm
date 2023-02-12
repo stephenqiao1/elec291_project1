@@ -214,6 +214,7 @@ Init_all:
 	mov	BRL,#BRG_VAL
 	mov	BDRCON,#0x1E ; BDRCON=BRR|TBCK|RBCK|SPD;
 	
+	;================
 	; Configure SPI pins and turn off speaker
 	anl P2M0, #0b_1100_1110
 	orl P2M1, #0b_0011_0001
