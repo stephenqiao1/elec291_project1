@@ -27,6 +27,9 @@ SHIFT_BUTTON    equ p0.0
 ;Output Pins
 OVEN_POWER      equ P0.7
 SPEAKER         equ P2.6
+
+PWM_OUTPUT    equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
+
 ;FLASH_CE        equ P0.
 
 ;Thermowire Pins
@@ -76,6 +79,7 @@ org 0x002B
 ; Place our variables here
 DSEG at 0x30 ; Before the state machine!
 Count1ms:         ds 2 ; Used to determine when one second has passed
+pwm_ratio:        ds 2
 States:           ds 1
 Temp_soak:        ds 1
 Time_soak:        ds 1
@@ -118,10 +122,10 @@ RTemp:  db 'RTmp:', 0
 RTime:  db 'RTm:', 0
 
 ;lables for runnning oven
-state:     db 'State:' , 0
-time:      db 'Tme:' , 0
+state:     db 'State>' , 0
+time:      db 'Tme>' , 0
 colon:     db ':', 0
-temp:      db 'Tmp:', 0
+temp:      db 'Tmp>', 0
 
 ;labels for changin parameters
 ReflowTemp:  db 'Reflow Temperature:', 0
@@ -347,6 +351,53 @@ SendToLCD:
     lcall ?WriteData; Send to LCD
 ret
 
+Display_lower_BCD mac
+    push ar0
+    mov r0, %0
+    lcall ?Display_lower_BCD
+    pop ar0
+endmac
+
+?Display_lower_BCD:
+    push acc
+    ; write least significant digit
+    mov a, r0
+    anl a, #0fh
+    orl a, #30h
+    lcall ?WriteData
+    pop acc
+ret
+
+Initialize_State_Display:
+
+    ;***clear the screen and set new display***
+    WriteCommand(#0x01)
+    Wait_Milli_Seconds(#2)
+    
+    Set_Cursor(1, 1)
+    Send_Constant_String(#time)
+	
+    Set_Cursor(1,6)
+    Send_Constant_String(#colon)
+   
+    
+    Set_Cursor(1,10)
+    Send_Constant_String(#temp)
+    
+    Set_Cursor(2,1)
+    Send_Constant_String(#state)
+ret
+
+Update_Display:
+    Set_Cursor(1, 5)
+    Display_lower_BCD(Run_time_minutes)
+    Set_Cursor(1, 7)
+    Display_BCD(Run_time_seconds)
+    ;Set_Cursor(1,14)
+    ;mov a, Temp_oven
+    ;SendToLCD(Temp_oven)
+ret
+
 ;The following functions store and restore the values--------------------------------------------------------------------------
 loadbyte mac
     mov a, %0
@@ -397,8 +448,8 @@ ret
 Load_Defaults:
     mov Temp_soak, #130 ; Soak Tmp Range is 130-170
     mov Time_soak, #0x3C ; Range 60-90 seconds
-    mov Temp_refl, #220 ; Range 220-245
-    mov Time_refl, #0x1E ; Range 30-60 seconds
+    mov Temp_refl, #220 ; Range 220-240
+    mov Time_refl, #0x1E ; Range 30-45 seconds
     ret 
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;off state
@@ -406,28 +457,16 @@ Load_Defaults:
 OFF_STATE:
     ;**CLEAR SCREEN**
     WriteCommand(#0x01)
-
+    ;**TURN OFF OVEN
+    clr OVEN_POWER
     ;OFF_STATE1:
     
     jb POWER_BUTTON, $ ; loop while the button is not pressed
 	Wait_Milli_Seconds(#50) ; debounce time
 	jb POWER_BUTTON, OFF_STATE ; it was a bounce, try again
 	jnb POWER_BUTTON, $ ; loop while the button is pressed
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-    ;Wait_Milli_Seconds(#250)
-
     ljmp main
-    ret
+ret
 ;-------------------------------------------------------------------------------------------------------------------------------
 
 ;***CHECK TEMPERATURE BY READING VOLTAGE AND CONVERTING
@@ -593,6 +632,18 @@ Timer2_ISR:
 	inc Count1ms+1
 
 Inc_Done:
+
+;**Oven Power Output-------------------
+    ; Do the PWM thing
+	; Check if Count1ms > pwm_ratio (this is a 16-bit compare)
+	clr c
+	mov a, pwm_ratio+0
+	subb a, Count1ms+0
+	mov a, pwm_ratio+1
+	subb a, Count1ms+1
+	; if Count1ms > pwm_ratio  the carry is set.  Just copy the carry to the pwm output pin:
+	mov PWM_OUTPUT, c
+;**----------------------------------
 	; Check if one second has passed
 	mov a, Count1ms+0
 	cjne a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
@@ -612,13 +663,13 @@ Inc_Done:
 	da a
     mov Run_time_seconds, a
     ;check sec overflow
-    cjne a, #0x60, Check_time_done
+    cjne a, #0x60, Check_sec_overflow_done
     mov Run_time_seconds, #0x00
-    mov a, Run_time_minutes
+    mov a, Run_time_minutes ;inc min
     add a, #1
     da a
     mov Run_time_minutes, a
-Check_time_done:
+Check_sec_overflow_done:
 	mov a, State_time
 	add a, #0x01
 	da a
@@ -632,8 +683,6 @@ Timer2_ISR_done:
 ; ==================================================================================================
 
 main:
-
-    
     mov SP, #0x7F
     lcall Timer2_Init
     lcall INI_SPI
@@ -643,12 +692,18 @@ main:
     mov P0M0, #0
     mov P0M1, #0
     setb EA   ;Enable global enterupt
-    lcall LCD_4BIT
 
     lcall Load_Configuration
-    
 
+    ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
+	mov pwm_ratio+0, #low(0)
+	mov pwm_ratio+1, #high(0)
+    
 state0: ; idle
+
+    ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
+	mov pwm_ratio+0, #low(0)
+	mov pwm_ratio+1, #high(0)
 
 ;***initial parameters displayed***
     
@@ -671,49 +726,48 @@ state0_done:
     mov States, #1
     mov State_time, #0
     setb enable_clk
+   
+     
 
 state1_beginning:
     
     ;Start Run Time
-    mov Run_time_seconds, #0x00 ; time starts at 0:00
-    mov Run_time_minutes, #0x00
+    mov Run_time_seconds, #0 ; time starts at 0:00
+    mov Run_time_minutes, #0
 
     ;***clear the screen and set new display***
-    WriteCommand(#0x01)
-    
-    Set_Cursor(1, 1)
-    Send_Constant_String(#time)
-	Display_BCD(Run_time_minutes)
-    Send_Constant_String(#colon)
-    Display_BCD(Run_time_seconds)
-    
-    Set_Cursor(1,10)
-    Send_Constant_String(#temp)
-    Set_Cursor(1,14)
-    mov a, Temp_oven
-    lcall SendToLCD
-    
-    Set_Cursor(2,1)
-    Send_Constant_String(#state)
+    lcall Initialize_State_Display
     Set_Cursor(2,7)
     Send_Constant_String(#Ramp2Soak); displays current state
+
+    ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
+	mov pwm_ratio+0, #low(1000)
+	mov pwm_ratio+1, #high(1000)
     
 
 state1: ; ramp to soak
-    Set_Cursor(1, 5)
-	Display_BCD(Run_time_minutes)
-    Set_Cursor(1, 7)
-    Display_BCD(Run_time_seconds)
-
+    
+    
     ;check power on
     lcall CHECK_POWER
-    
+    ;Update Time and Temp
+    lcall Update_Display
+
     ; check if temp is below 150 
-    MOV A, Temp_soak           
-    SUBB A, Temp_soak       
-    JNC state1_done    ; if greater, jump to state 2
-    JZ state1_done ; if equal to, jump to state 2
-    JC state1 ; if less than, go back to state1
+    ;MOV A, Temp_soak           
+    ;SUBB A, Temp_soak       
+    ;JNC state1_done    ; if greater, jump to state 2
+    ;JZ state1_done ; if equal to, jump to state 2
+    ;JC state1 ; if less than, go back to state1
+
+;*Checking moving to states with buttons---- 
+;*Will remove after proper temperature reading----
+
+    jb NEXT_STATE_BUTTON, state1
+    Wait_Milli_Seconds(#50) ; debounce time
+	jb NEXT_STATE_BUTTON, state1 ; if button not pressed, loop
+	jnb NEXT_STATE_BUTTON, $ 
+
 state1_done:
     mov States, #2
     ;set State_time = 0
@@ -726,54 +780,59 @@ state1_done:
 state2_beginning: 
     mov State_time, #0x00 ;clear the state time
     ;***clear the screen and set new display***
-    WriteCommand(#0x01)
-    
-    Set_Cursor(1, 1)
-    Send_Constant_String(#time)
-	Display_BCD(Run_time_minutes)
-    Send_Constant_String(#colon)
-    Display_BCD(Run_time_seconds)
-    
-    Set_Cursor(1,10)
-    Send_Constant_String(#temp)
-    Set_Cursor(1,14)
-    mov a, Temp_oven
-    lcall SendToLCD
-    
-    Send_Constant_String(#state)
+    lcall Initialize_State_Display
     Set_Cursor(2,7)
-    Send_Constant_String(#Soak); displays current state
+    Send_Constant_String(#Soak) ;displays current state
+
+    ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
+	mov pwm_ratio+0, #low(200)
+	mov pwm_ratio+1, #high(000)
 
 state2:
     ;check power on
     lcall CHECK_POWER
+    
+    ;Update Time and Temp
+    lcall Update_Display
+
+    ;Set_Cursor(1,14)
+    ;mov a, Temp_oven
+    ;lcall SendToLCD
 
     ;on
-    setb OVEN_POWER
-    lcall Wait_One_Second
+    ;setb OVEN_POWER
+    ;lcall Wait_One_Second
     ;off
-    clr OVEN_POWER
-    mov r5, #0
-four_sec_loop:
+    ;clr OVEN_POWER
+    ;mov r5, #0
+;four_sec_loop:
     ; loop back to state2 if run time is less than soak time
-    mov a, Time_soak
-    subb a, State_time
-    cjne a, #0, state2
-    Set_Cursor(1,5)
-	Display_BCD(Run_time_minutes)
-    Set_Cursor(1,7)
-    Send_Constant_String(#colon)
-    Set_Cursor(1,8)
-    Display_BCD(Run_time_seconds)
-    Wait_Milli_Seconds(#250)
-    inc r5
-    cjne r5, #16, four_sec_loop
+ ;   mov a, Time_soak
+  ;  subb a, State_time
+   ; cjne a, #0, state2
+    ;Set_Cursor(1,5)
+	;Display_BCD(Run_time_minutes)
+    ;Set_Cursor(1,7)
+    ;Send_Constant_String(#colon)
+    ;Set_Cursor(1,8)
+    ;Display_BCD(Run_time_seconds)
+    ;Wait_Milli_Seconds(#250)
+    ;inc r5
+    ;cjne r5, #16, four_sec_loop
         
     
     ; loop back to state2 if run time is less than soak time
-    mov a, Time_soak
-    subb a, State_time
-    cjne a, #0, state2
+    ;mov a, Time_soak
+    ;subb a, State_time
+    ;cjne a, #0, state2
+
+;*Checking moving to states with buttons---- 
+;*Will remove after proper temperature reading----
+
+    jb NEXT_STATE_BUTTON, state2
+    Wait_Milli_Seconds(#50) ; debounce time
+	jb NEXT_STATE_BUTTON, state2 ; if button not pressed, loop
+	jnb NEXT_STATE_BUTTON, $ 
     
 state2_done:
     mov State_time, #0
@@ -784,41 +843,33 @@ state3_beginning:
     setb OVEN_POWER ;turn power on 100%
 
     ;***clear the screen and set new display***
-    WriteCommand(#0x01)
-    Set_Cursor(1, 1)
-    Send_Constant_String(#time)
-	Display_BCD(Run_time_minutes)
-    Send_Constant_String(#colon)
-    Display_BCD(Run_time_seconds)
-    
-    Set_Cursor(1,10)
-    Send_Constant_String(#temp)
-    Set_Cursor(1,14)
-    mov a, Temp_oven
-    lcall SendToLCD
-    
-    Set_Cursor(2,1)
-    Send_Constant_String(#state)
+    lcall Initialize_State_Display
     Set_Cursor(2,7)
     Send_Constant_String(#Ramp2Peak)
+
+    ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
+	mov pwm_ratio+0, #low(1000)
+	mov pwm_ratio+1, #high(1000)
 
 state3: 
     ;check power on
     lcall CHECK_POWER
     
-    ; update display
-    Set_Cursor(1,5)
-	Display_BCD(Run_time_minutes)
-    Send_Constant_String(#colon)
-    Display_BCD(Run_time_seconds)
-
-    mov a, Temp_oven
-    subb a, Temp_refl 
-    JNC state3_done    ; if greater, jump to state 4
-    JZ state3_done ; if equal to, jump to state 4
-    JC state3 ; if less than, go back to state3
     
-;helllooooooooo
+    ;Update Time and Temp
+    lcall Update_Display
+    
+    ;mov a, Temp_oven
+    ;subb a, Temp_refl 
+    ;JNC state3_done    ; if greater, jump to state 4
+    ;JZ state3_done ; if equal to, jump to state 4
+    ;JC state3 ; if less than, go back to state3
+    
+jb NEXT_STATE_BUTTON, state3
+    Wait_Milli_Seconds(#50) ; debounce time
+	jb NEXT_STATE_BUTTON, state3 ; if button not pressed, loop
+	jnb NEXT_STATE_BUTTON, $
+
 state3_done:
     mov State_time, #0
     ljmp state4_beginning
@@ -827,56 +878,54 @@ state3_done:
 ; reflow 
 state4_beginning:
     ;***clear the screen and set new display***
-    WriteCommand(#0x01)
-    Set_Cursor(1, 1)
-    Send_Constant_String(#time)
-	Display_BCD(Run_time_minutes)
-
-    Send_Constant_String(#colon)
-    Set_Cursor(1,7)
-    Display_BCD(Run_time_seconds)
-    
-    Set_Cursor(1,10)
-    Send_Constant_String(#temp)
-    Set_Cursor(1,14)
-    mov a, Temp_oven
-    lcall SendToLCD
-    
-    Set_Cursor(2,1)  
-    Send_Constant_String(#state)
+    lcall Initialize_State_Display
     Set_Cursor(2,7)
     Send_Constant_String(#Reflow)
+
+    ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
+	mov pwm_ratio+0, #low(200)
+	mov pwm_ratio+1, #high(000)
 
 
 state4:
     ;check power on
     lcall CHECK_POWER
+    ;Update Time and Temp
+    lcall Update_Display
 
     ;on
-    setb OVEN_POWER
-    lcall Wait_One_Second
+    ;setb OVEN_POWER
+    ;lcall Wait_One_Second
     ;off
-    clr OVEN_POWER
-    mov r5, #0
-    four_sec_loop2:
+    ;clr OVEN_POWER
+    ;mov r5, #0
+    ;four_sec_loop2:
         ; loop back to state2 if run time is less than soak time
-        mov a, Time_refl
-        subb a, State_time
-        cjne a, #0, state4
-        Set_Cursor(1, 5)
-	    Display_BCD(Run_time_minutes)
-        Set_Cursor(1,7)
-        Display_BCD(Run_time_seconds)
-        Wait_Milli_Seconds(#250)
+    ;    mov a, Time_refl
+    ;    subb a, State_time
+    ;   cjne a, #0, state4
+    ;    Set_Cursor(1, 5)
+	;    Display_BCD(Run_time_minutes)
+    ;    Set_Cursor(1,7)
+    ;    Display_BCD(Run_time_seconds)
+    ;    Wait_Milli_Seconds(#250)
 
-        inc r5
-        cjne r5, #16, four_sec_loop2
+    ;    inc r5
+    ;    cjne r5, #16, four_sec_loop2
         
     
     ; loop back to state2 if run time is less than soak time
-    mov a, Time_refl
-    subb a, State_time
-    cjne a, #0, state4
+    ;mov a, Time_refl
+    ;subb a, State_time
+    ;cjne a, #0, state4
+
+    ;*Checking moving to states with buttons---- 
+;*Will remove after proper temperature reading----
+
+    jb NEXT_STATE_BUTTON, state4
+    Wait_Milli_Seconds(#50) ; debounce time
+	jb NEXT_STATE_BUTTON, state4 ; if button not pressed, loop
+	jnb NEXT_STATE_BUTTON, $ 
 
 state4_done: 
     mov State_time, #0
@@ -888,43 +937,33 @@ state5_beginning: ; turn oven off
     clr OVEN_POWER
 
 ;***clear the screen and set new display***
-    WriteCommand(#0x01)
-    Set_Cursor(1, 1)
-    Send_Constant_String(#time)
-    Set_Cursor(1, 5)
-	Display_BCD(Run_time_minutes)
-    Set_Cursor(1,6)
-    Send_Constant_String(#colon)
-    Set_Cursor(1,7)
-    Display_BCD(Run_time_seconds)
-    
-    Set_Cursor(1,10)
-    Send_Constant_String(#temp)
-    Set_Cursor(1,14)
-    mov a, Temp_oven
-    lcall SendToLCD
-    
-    Set_Cursor(2,1)
-    Send_Constant_String(#state)
-    Set_Cursor(2,7)
+    lcall Initialize_State_Display
     Send_Constant_String(#Cooling)
+
+    ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
+	mov pwm_ratio+0, #low(0)
+	mov pwm_ratio+1, #high(0)
+
 state5:
     ;check power on
     lcall CHECK_POWER
     
     ; update display
-    Set_Cursor(1,5)
-	Display_BCD(Run_time_minutes)
-    Set_Cursor(1,7)
-    Send_Constant_String(#colon)
-    Set_Cursor(1,8)
-    Display_BCD(Run_time_seconds)
+    lcall Update_Display
 
-    mov a, Temp_oven
-    subb a, #60
-    JNC state5    ; if greater, jump back to state 5
-    JZ state5 ; if equal to, go back to state5
-    JC state5_done ; if less than, go back to state 0
+    ;mov a, Temp_oven
+    ;subb a, #60
+    ;JNC state5    ; if greater, jump back to state 5
+    ;JZ state5 ; if equal to, go back to state5
+    ;JC state5_done ; if less than, go back to state 0
+
+    ;*Checking moving to states with buttons---- 
+;*Will remove after proper temperature reading----
+
+    jb NEXT_STATE_BUTTON, state5
+    Wait_Milli_Seconds(#50) ; debounce time
+	jb NEXT_STATE_BUTTON, state5 ; if button not pressed, loop
+	jnb NEXT_STATE_BUTTON, $ 
 
 state5_done:
     mov State_time, #0
