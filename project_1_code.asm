@@ -92,7 +92,7 @@ org 0x002B
 ; Place our variables here
 DSEG at 0x30 ; Before the state machine!
 Count1ms:         ds 2 ; Used to determine when one second has passed
-Count5sec:         ds 1
+Count5sec:        ds 1
 States:           ds 1
 Temp_soak:        ds 1
 Time_soak:        ds 1
@@ -346,22 +346,22 @@ CHECK_POWER:
 CHECK_POWER_END:
 ret
 
-SOUND_FSM:
+;SOUND_FSM:
 ;state_0_sound:
 ; check if 5 seconds has passed, if yes go to state 1
-    mov a, Run_time_seconds
-    cjne a, #5, state_0_sound
-    lcall state_1_sound
+;    jnb five_seconds_flag
+;    cjne a, #5, state_0_sound
+;    lcall state_1_sound
 
-state_1_sound:
+;state_1_sound:
 ; check if temp is greater than 100, if yes go to state 2
 ; check if temp is less than 100, if yes go to state 5
-    mov a, Temp_oven
-    subb a, #100
-    jnc state_2_sound
-    jc state_5_sound
+;    mov a, Temp_oven
+;    subb a, #100
+ ;   jnc state_2_sound
+ ;   jc state_5_sound
 
-state_2_sound:
+;state_2_sound:
 ; divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
 ; go to state_3_sound
     mov a, Temp_oven
@@ -382,65 +382,65 @@ state_3_sound:
     ; subtract 23 by 20 = 3 <--- remainder
 ; if not 0, go to state_4_sound
 
-    mov a, Temp_oven 
-    load_X(a)
-    load_y(#100)
-    lcall div32
-    load_X(a)
-    load_y(#100)
-    lcall mul32
-    mov r0, a 
-    mov a, Temp_oven
-    subb a, r0
-    jz state_0_sound
-    jnz state_4_sound
+;    mov a, Temp_oven 
+;    load_X(a)
+;    load_y(#100)
+;    lcall div32
+;    load_X(a)
+;    load_y(#100)
+;    lcall mul32
+;    mov r0, a 
+;    mov a, Temp_oven
+;    subb a, r0
+;    jz state_0_sound
+;    jnz state_4_sound
 
-state_4_sound:
+;state_4_sound:
 ; check if the remainder of temp divided by 100 is greater or equal to than 20, if yes go to state_7_sound
 ; if not go to state_5_sound
 
-  load_X(a)
-  load_y(#100)
-  subb a, #20
-  jnc state_7_sound
-  jz state_7_sound 
-  jc state_5_sound
+;  load_X(a)
+;  load_y(#100)
+;  subb a, #20
+;  jnc state_7_sound
+;  jz state_7_sound 
+;  jc state_5_sound
 
-state_5_sound:
+;state_5_sound:
 ; play number from 1 to 19, based off remainder from temp divided by 100
 ; go to state_6_sound
 
-    mov a, Temp_oven 
-    load_X(a)
-    load_y(#20)
-    lcall div32
-    load_X(a)
-    load_y(#20)
-    lcall mul32
-    mov r0, a 
-    mov a, Temp_oven
-    subb a, r0
+;    mov a, Temp_oven 
+;    load_X(a)
+;    load_y(#20)
+;    lcall div32
+;    load_X(a)
+;    load_y(#20)
+;    lcall mul32
+;    mov r0, a 
+;    mov a, Temp_oven
+;    subb a, r0
 
     ;and then playsound(a)
 
-    lcall state_6_sound
+;    lcall state_6_sound
 
 
 
-state_6_sound:
+;state_6_sound:
 ; go to state_0_sound
 
- lcall state_0_sound
+; lcall state_0_sound
 
-state_7_sound:
+;state_7_sound:
 ; play tenths number, by dividing temp by 100 finding the remainder, then dividing the remainder by 10, and correponding the value to the correct 20 - 90 value
 ; go to state_8_sound
 
-state_8_sound:
+;state_8_sound:
 ; check if there is a ones remainder, if yes go to state_9_sound
 ; if not go to state_0_sound
 
-state_9_sound:
+;state_9_sound:
 ; play ones remainder
 
 
