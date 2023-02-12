@@ -349,7 +349,8 @@ ret
 SOUND_FSM:
 ;state_0_sound:
 ; check if 5 seconds has passed, if yes go to state 1
-    cjne Run_time_seconds, #5, state_0_sound
+    mov a, Run_time_seconds
+    cjne a, #5, state_0_sound
     lcall state_1_sound
 
 state_1_sound:
