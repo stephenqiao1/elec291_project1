@@ -364,17 +364,17 @@ ret
 ;state_2_sound:
 ; divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
 ; go to state_3_sound
-    mov a, Temp_oven
-    load_X(a)
-    load_y(#100)
-    lcall div32
-    subb a, #1
-    jz "play sound 100"
-    subb a, #2
-    jz "play sound 200"
-    lcall state_3_sound
+;    mov a, Temp_oven
+;    load_X(a)
+;    load_y(#100)
+;    lcall div32
+;    subb a, #1
+;    jz "play sound 100"
+;    subb a, #2
+  ;  jz "play sound 200"
+   ; lcall state_3_sound
 
-state_3_sound:
+;state_3_sound:
 ; check remainder of temp, if it is 0, go back to state_0_sound
     ; ***how to get remainder of 23/4***
     ; integer division of 23 and 4 = 5
