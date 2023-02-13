@@ -404,7 +404,7 @@ state_8_sound:
     ljmp state_0_sound
 
 
-PLAYBACK_TEMP:
+INI_PLAYBACK_TEMP:
     ; ****INITIALIZATION****
     ; Configure SPI pins and turn off speaker
 	anl P2M0, #0b_1100_1110
@@ -437,8 +437,9 @@ PLAYBACK_TEMP:
 	mov a, DADC
 	jb acc.6, check_DAC_init ; Wait for DAC to finish
 	
-	setb EA ; Enable interrupts
+ret
 
+PLAYBACK_TEMP:
     ; ***play audio***
     clr TR1 ; Stop Timer 1 ISR from playing previous request
     setb FLASH_CE 
@@ -741,16 +742,12 @@ Ave_loop:
 
     ;**INSERT MATH FUNCTIONS
 
-    ;load_Y(410)
-	;lcall mul32
-	; Divide result by 1023
-	; Subtract 273 + 5 from result to get temperature while accounting for offset
-	;load_Y(278)
-	;lcall sub32
-
-    load_y(22)
+    load_Y(2026)
+	lcall mul32
+	load_Y(7000)
+	lcall div32
+    Load_Y(22)
     lcall add32
-
     mov Temp_oven, x+0
 
 Display_Temp_BCD:
@@ -938,6 +935,7 @@ main:
     ;lcall INI_SPI
     lcall LCD_4BIT
     lcall InitSerialPort
+    lcall INI_PLAYBACK_TEMP
     ; In case you decide to use the pins of P0, configure the port in bidirectional mode. Can be ignored
     mov P0M0, #0
     mov P0M1, #0
@@ -1033,33 +1031,6 @@ state1: ; ramp to soak
     ; Copy the 10-bits of the ADC conversion into the 32-bits of 'x'
 	;mov x+0, Result+0
 	;mov x+1, Result+1
-	
-    
-    ;Load_x(0)
-    ;mov average_count, #50
-
-    ;calculate_ave:     
-    ;    mov y+0, result+0
-	;    mov y+1, result+1
-	;    mov y+2, #0
-	;    mov y+3, #0
-    ;Wait_Milli_Seconds(#10)
-    ;djnz average_count, calculate_ave
-    ;load_Y(100)
-    ;lcall div32
-
-    ; Multiply by 410
-	;load_Y(410)
-	;lcall mul32
-	; Divide result by 1023
-	;load_Y(1023)
-	;lcall div32
-	; Subtract 273 + 5 from result to get temperature while accounting for offset
-	;load_Y(273)
-	;lcall sub32
-
-
-
 
     ;Load_y(22)
     ;lcall add32
