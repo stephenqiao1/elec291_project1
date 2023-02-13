@@ -3,7 +3,6 @@ $MODLP51RC2
 $LIST
 
 
-
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;These EQU must match the wiring between the microcontroller and ADC
 CLK  EQU 22118400
@@ -18,11 +17,11 @@ TIMER2_RELOAD EQU (65536-(CLK/TIMER2_RATE))
 ;shjfjdfs
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;Button Pin Mapping
-NEXT_STATE_BUTTON  equ P1.3;0.5
-STIME_BUTTON    equ P1.4;0.2
-STEMP_BUTTON    equ P1.5;0.3
-RTIME_BUTTON    equ P1.6;0.4
-RTEMP_BUTTON    equ P1.7;0.6
+NEXT_STATE_BUTTON  equ P0.5
+STIME_BUTTON    equ P0.2
+STEMP_BUTTON    equ P0.3
+RTIME_BUTTON    equ P0.4
+RTEMP_BUTTON    equ P0.6
 
 POWER_BUTTON    equ P4.5
 SHIFT_BUTTON    equ p0.4
@@ -36,10 +35,10 @@ PWM_OUTPUT    equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
 FLASH_CE        equ P0.0
 
 ;Thermowire Pins
-CE_ADC    EQU  P0.0;1.7
-MY_MOSI   EQU  P0.1;1.6
-MY_MISO   EQU  P0.2;1.5
-MY_SCLK   EQU  P0.3;1.4 
+CE_ADC    EQU  P1.7
+MY_MOSI   EQU  P1.6
+MY_MISO   EQU  P1.5
+MY_SCLK   EQU  P1.4 
 
 ; Commands supported by the SPI flash memory according to the datasheet
 WRITE_ENABLE     EQU 0x06  ; Address:0 Dummy:0 Num:0
@@ -167,12 +166,12 @@ Cooling:   db 'Cooling' , 0
 
 ;initialize SPI 
 INI_SPI:
-	setb MY_MISO ; Make MISO an input pin
+	setb MY_MISO          ; Make MISO an input pin
 	clr MY_SCLK           ; Mode 0,0 default
 	ret
 DO_SPI_G:
 	push acc
-	mov R1, #0 ; Received byte stored in R1
+	mov R1, #0            ; Received byte stored in R1
 	mov R2, #8            ; Loop counter (8-bits)
 DO_SPI_G_LOOP:
 	mov a, R0             ; Byte to write is in R0
@@ -261,43 +260,12 @@ ret
 
 CHECK_STIME:
 
-    ;jb STIME_BUTTON, CHECK_STIME_END ; if button not pressed, stop checking
-	;Wait_Milli_Seconds(#50) ; debounce time
-	;jb STIME_BUTTON, CHECK_STIME_END ; if button not pressed, stop checking
-	;jnb STIME_BUTTON, $ ; loop while the button is pressed
-    
-    ;inc Time_soak
-
-    ;mov a, Time_soak ;increment STime by 1
-    ;add a, #0x01
-    ;da a
-    ;mov Time_soak, a
-    ;cjne a, #0x5B, CHECK_STIME_END
-    ;mov Time_soak, #0x3C
-    ;lcall Save_Configuration
-
     Change_8bit_Variable(STIME_BUTTON, Time_soak, CHECK_STIME_END)
-    ;mov a, Time_soak
-    ;lcall SendToLCD
-    ;lcall Save_Configuration
 	
 CHECK_STIME_END:
 ret
 
 CHECK_STEMP:
-
-    ;jb STEMP_BUTTON, CHECK_STEMP_END ; if button not pressed, stop checking
-	;Wait_Milli_Seconds(#50) ; debounce time
-	;jb STEMP_BUTTON, CHECK_STEMP_END ; if button not pressed, stop checking
-	;jnb STEMP_BUTTON, $ ; loop while the button is pressed
-    
-    ;mov a, Temp_soak ;increment STEMP by 5
-    ;add a, #5
-    ;da a
-    ;mov Temp_soak, a
-    ;cjne a, #175, CHECK_STEMP_END
-    ;mov Temp_soak, #130
-
     Change_8bit_Variable(STEMP_BUTTON, Temp_soak, CHECK_STEMP_END)
     ;lcall Save_Configuration
 	
@@ -305,41 +273,12 @@ CHECK_STEMP_END:
 ret
 
 CHECK_RTIME:
-
-    ;jb RTIME_BUTTON, CHECK_RTIME_END ; if button not pressed, stop checking
-	;Wait_Milli_Seconds(#50) ; debounce time
-	;jb RTIME_BUTTON, CHECK_RTIME_END ; if button not pressed, stop checking
-	;jnb RTIME_BUTTON, $ ; loop while the button is pressed
-    
-    ;mov a, Time_refl ;increment RTime by 1
-    ;add a, #0x01
-    ;da a
-    ;mov Time_refl, a
-    ;cjne a, #0x3D, CHECK_RTIME_END
-    ;mov Time_refl, #0x1E
-    ;lcall Save_Configuration
 	Change_8bit_Variable(RTIME_BUTTON, Time_refl, CHECK_RTIME_END)
-
 CHECK_RTIME_END:
 ret
 
 CHECK_RTEMP:
-
-    ;jb RTEMP_BUTTON, CHECK_RTEMP_END ; if button not pressed, stop checking
-	;Wait_Milli_Seconds(#50) ; debounce time
-	;jb RTEMP_BUTTON, CHECK_RTEMP_END ; if button not pressed, stop checking
-	;jnb RTEMP_BUTTON, $ ; loop while the button is pressed
-    
-    ;mov a, Temp_refl ;increment RTemp by 5
-    ;add a, #5
-    ;da a
-    ;mov Temp_refl, a
-    ;cjne a, #255, CHECK_RTEMP_END
-    ;mov Temp_refl, #220
-    ;lcall Save_Configuration
-
     Change_8bit_Variable(RTEMP_BUTTON, Temp_refl, CHECK_RTEMP_END)
-	
 CHECK_RTEMP_END:
 ret
 
@@ -353,6 +292,7 @@ CHECK_POWER:
 
 CHECK_POWER_END:
 ret
+;**SOUND STUFF---------------------------------------------------------------
 
 SOUND_FSM:
 state_0_sound:
@@ -463,7 +403,7 @@ state_8_sound:
     ljmp state_0_sound
 
 
-PLAYBACK_TEMP:
+INI_PLAYBACK_TEMP:
     ; ****INITIALIZATION****
     ; Configure SPI pins and turn off speaker
 	anl P2M0, #0b_1100_1110
@@ -492,34 +432,40 @@ PLAYBACK_TEMP:
 	mov DADH, #0x80 ; Middle of scale
 	mov DADL, #0
 	orl DADC, #0b_0100_0000 ; Start DAC by GO/BSY=1
+    check_DAC_init:
+	mov a, DADC
+	jb acc.6, check_DAC_init ; Wait for DAC to finish
+	
+ret
 
+PLAYBACK_TEMP:
     ; ***play audio***
     clr TR1 ; Stop Timer 1 ISR from playing previous request
-    setb FLASH_CE 
+    setb FLASH_CE
     clr SPEAKER ; Turn off speaker
-
+    
     clr FLASH_CE ; Enable SPI Flash
-    ;mov READ_BYTES, #3
     mov a, #READ_BYTES
     lcall Send_SPI
     ; Set the initial position in memory where to start playing
     
-    mov a, #0x02 ; change initial position
+    mov a, #0x00 ; change initial position
     lcall Send_SPI
-    mov a, #0xd5 ; next memory position
-    lcall Send_SPI 
+    mov a, #0x00 ; next memory position
+    lcall Send_SPI
     mov a, #0x2d ; next memory position
     lcall Send_SPI
-    mov a, #0x02 ; request first byte to send to DAC
+    mov a, #0x00 ; request first byte to send to DAC
     lcall Send_SPI
-
+    
     ; How many bytes to play?
     mov w+2, #0x00 ; Load the high byte of the number of bytes to play
-    mov w+1, #0x39 ; Load the middle byte of the number of bytes to play
-    mov w+0, #0x6a ; Load the low byte of the number of bytes to play
- 
+    mov w+1, #0x1c ; Load the middle byte of the number of bytes to play
+    mov w+0, #0x5b ; Load the low byte of the number of bytes to play
+    
+    
     setb SPEAKER ;Turn on speaker
-    setb TR1 ;Start playback by enabling Timer1 
+    setb TR1 ;Start playback by enabling Timer1
     ret
     
 ;-------------------------------------------------------------------------------------------------------------------------------
@@ -622,7 +568,6 @@ Display_3_digit_BCD:
 ret
 
 
-
 ;The following functions store and restore the values--------------------------------------------------------------------------
 loadbyte mac
     mov a, %0
@@ -700,8 +645,8 @@ ret
 ;***CHECK TEMPERATURE BY READING VOLTAGE AND CONVERTING
 Check_Temp:
     
-    jnb one_seconds_flag, Check_Temp_done
-    clr one_seconds_flag
+    ;jnb one_seconds_flag, Check_Temp_done
+    ;clr one_seconds_flag
     
     clr CE_ADC
 	mov R0, #00000001B ; Start bit:1
@@ -713,15 +658,18 @@ Check_Temp:
 	mov Result+1, a    ; Save result high.
 	mov R0, #55H ; It doesn't matter what we transmit...
 	lcall DO_SPI_G
-	mov Result, R1     ; R1 contains bits 0 to 7.  Save result low.
+	mov Result+0, R1     ; R1 contains bits 0 to 7.  Save result low.
 	setb CE_ADC
 
 	Wait_Milli_Seconds(#10)
     ; Copy the 10-bits of the ADC conversion into the 32-bits of 'x'
-	mov x+0, result+0
-	mov x+1, result+1
-	mov x+2, #0
-	mov x+3, #0
+	mov R6, Result+0
+	mov R7, Result+1
+ret
+
+	
+    ;mov x+2, #0
+	;mov x+3, #0
 	
     
         ;Load_x(0)
@@ -754,15 +702,62 @@ Check_Temp:
     ;sjmp Send_Temp_Port
 	
     ; The 4-bytes of x have the temperature in binary
+
+    ;mov Temp_oven, x+0 ;save the temperature
+
+;Display_Temp_BCD:
+;	lcall hex2bcd ; converts binary in x to BCD in BCD
+
+;    lcall Display_3_digit_BCD
+
+;Send_Temp_Port:
+;    Send_BCD(bcd+4)
+;    Send_BCD(bcd+3)
+;    Send_BCD(bcd+2)
+;	Send_BCD(bcd+1)
+;    Send_BCD(bcd+0);
+;	mov a, #'\r'
+;	lcall putchar
+;	mov a, #'\n'
+;	lcall putchar
+;Check_Temp_done:
+;ret
+    
+;***CALCULATES THE TEMPERATURE
+Average_Temp:
+    Load_x(0)
+    mov R5, #100
+Ave_loop:
+    lcall Check_Temp
+    mov y+3, #0
+    mov y+2, #0
+    mov y+1, R7
+    mov y+0, R6
+    lcall add32
+    lcall Wait10us
+    djnz R5, Ave_loop
+    load_y(100)
+    lcall div32
+
+    ;**INSERT MATH FUNCTIONS
+
+    load_Y(2026)
+	lcall mul32
+	load_Y(7000)
+	lcall div32
+    Load_Y(22)
+    lcall add32
+    mov Temp_oven, x+0
+
 Display_Temp_BCD:
 	lcall hex2bcd ; converts binary in x to BCD in BCD
 
     lcall Display_3_digit_BCD
 
 Send_Temp_Port:
-    Send_BCD(bcd+4)
-    Send_BCD(bcd+3)
-    Send_BCD(bcd+2)
+    ;Send_BCD(bcd+4)
+    ;Send_BCD(bcd+3)
+    ;Send_BCD(bcd+2)
 	Send_BCD(bcd+1)
     Send_BCD(bcd+0)
 	mov a, #'\r'
@@ -770,8 +765,7 @@ Send_Temp_Port:
 	mov a, #'\n'
 	lcall putchar
 Check_Temp_done:
-    ret
-    
+ret    
 
 ;-------------------------------------------------------------------------------------------------------------------------------
 
@@ -784,6 +778,10 @@ Wait_One_Second:
     Wait_Milli_Seconds(#250)
 ret
 
+Wait10us:
+    mov R0, #74
+    djnz R0, $
+ret
 ; ==================================================================================================
 
 ;-------------------------------------;
@@ -813,7 +811,7 @@ Timer1_ISR:
 keep_playing:
 	setb SPEAKER
 	lcall Send_SPI ; Read the next byte from the SPI Flash...
-	mov P0, a ; WARNING: Remove this if not using an external DAC to use the pins of P0 as GPIO
+	;mov P0, a ; WARNING: Remove this if not using an external DAC to use the pins of P0 as GPIO
 	add a, #0x80
 	mov DADH, a ; Output to DAC. DAC output is pin P2.3
 	orl DADC, #0b_0100_0000 ; Start DAC by setting GO/BSY=1
@@ -821,7 +819,7 @@ keep_playing:
 
 stop_playing:
 	clr TR1 ; Stop timer 1
-	;setb FLASH_CE  ; Disable SPI Flash
+	setb FLASH_CE  ; Disable SPI Flash
 	clr SPEAKER ; Turn off speaker.  Removes hissing noise when not playing sound.
 	mov DADH, #0x80 ; middle of range
 	orl DADC, #0b_0100_0000 ; Start DAC by setting GO/BSY=1
@@ -936,6 +934,7 @@ main:
     ;lcall INI_SPI
     lcall LCD_4BIT
     lcall InitSerialPort
+    lcall INI_PLAYBACK_TEMP
     ; In case you decide to use the pins of P0, configure the port in bidirectional mode. Can be ignored
     mov P0M0, #0
     mov P0M1, #0
@@ -970,15 +969,12 @@ state0: ; idle
     lcall Save_Configuration
     
     ;lcall Check_Temp
-
-
-
-
+    lcall PLAYBACK_TEMP
 
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
 	jb NEXT_STATE_BUTTON, state0 ; if button not pressed, loop
-	jnb NEXT_STATE_BUTTON, $ 
+	jnb NEXT_STATE_BUTTON, $
 state0_done:
     mov States, #1
     mov State_time, #0
@@ -1009,124 +1005,32 @@ state1: ; ramp to soak
     lcall CHECK_POWER
     ;Update Time and Temp
     lcall Update_Display
-    ;lcall Check_Temp
+    lcall Average_Temp
 
-    ;jnb one_seconds_flag, Check_Temp_done1
-    ;clr one_seconds_flag
-    
-    clr CE_ADC
-	mov R0, #00000001B ; Start bit:1
-	lcall DO_SPI_G
-	mov R0, #10000000B ; Single ended, read channel 0
-	lcall DO_SPI_G
-	mov a, R1          ; R1 contains bits 8 and 9
-	anl a, #00000011B  ; We need only the two least significant bits
-	mov Result+1, a    ; Save result high.
-	mov R0, #55H ; It doesn't matter what we transmit...
-	lcall DO_SPI_G
-	mov Result, R1     ; R1 contains bits 0 to 7.  Save result low.
-	setb CE_ADC
-
-	Wait_Milli_Seconds(#10)
-    ; Copy the 10-bits of the ADC conversion into the 32-bits of 'x'
-	mov x+0, result+0
-	mov x+1, result+1
-	mov x+2, #0
-	mov x+3, #0
-	
-    
-        Load_x(0)
-        mov average_count, #50
-    calculate_ave:     
-        mov y+0, result+0
-	    mov y+1, result+1
-	    mov y+2, #0
-	    mov y+3, #0
-    Wait_Milli_Seconds(#10)
-    djnz average_count, calculate_ave
-    load_Y(100)
-    lcall div32
-
-    ; Multiply by 410
-	load_Y(410)
-	lcall mul32
-	; Divide result by 1023
-	load_Y(1023)
-	lcall div32
-	; Subtract 273 + 5 from result to get temperature while accounting for offset
-	load_Y(273)
-	lcall sub32
-
-
-
-
-    ;Load_y(22)
-    ;lcall add32
-
-;Check_Temp_done_2:
-    ;jnb one_seconds_flag, Check_Temp_done
-    ;mov a, result+1
-    ;Set_Cursor(1,14)
-    ;lcall SendToLCD 
-    ;Set_Cursor(1,14)
-    ;mov a, x+0
-    ;lcall SendToLCD
-    ;mov Temp_oven, a
-    
-    ;mov a, States
-    ;cjne a, #0, Display_Temp_BCD
-    ;sjmp Send_Temp_Port
-	
-    ; The 4-bytes of x have the temperature in binary
-Display_Temp_BCD1:
-	lcall hex2bcd ; converts binary in x to BCD in BCD
-
-    lcall Display_3_digit_BCD
-
-sjmp Send_Temp_Port1
-
-state1_1:
-    ljmp state1
-
-Send_Temp_Port1:
-    ;Send_BCD(bcd+4)
-    ;Send_BCD(bcd+3)
-    ;Send_BCD(bcd+2)
-	Send_BCD(bcd+1)
-    Send_BCD(bcd+0)
-	mov a, #'\r'
-	lcall putchar
-	mov a, #'\n'
-	lcall putchar
 Check_Temp_done1:
+   
+    ;check if temp is below 150 
     
-
-    ; check if temp is below 150 
-    ;MOV A, Temp_soak           
-    ;SUBB A, Temp_soak       
-    ;JNC state1_done    ; if greater, jump to state 2
-    ;JZ state1_done ; if equal to, jump to state 2
-    ;JC state1 ; if less than, go back to state1
+    mov a, Temp_oven           
+    subb a, Temp_soak
+    jnc state1_done    ; if greater, jump to state 2
+    jz state1_done ; if equal to, jump to state 2
+    jc state1 ; if less than, go back to state1
 
 ;*Checking moving to states with buttons---- 
 ;*Will remove after proper temperature reading----
 
-    jb NEXT_STATE_BUTTON, state1_1
-    Wait_Milli_Seconds(#50) ; debounce time
-	jb NEXT_STATE_BUTTON, state1_1 ; if button not pressed, loop
-	jnb NEXT_STATE_BUTTON, $ 
+    ;jb NEXT_STATE_BUTTON, state1
+    ;Wait_Milli_Seconds(#50) ; debounce time
+	;jb NEXT_STATE_BUTTON, state1 ; if button not pressed, loop
+	;jnb NEXT_STATE_BUTTON, $ 
 
 state1_done:
     mov States, #2
-    ;set State_time = 0
-    sjmp state2_beginning
-
-;OFF_STATE2:
-    ;ljmp OFF_STATE
 
 ; preheat/soak
 state2_beginning: 
-    mov State_time, #0x00 ;clear the state time
+    mov State_time, #0;x00 ;clear the state time
     ;***clear the screen and set new display***
     lcall Initialize_State_Display
     Set_Cursor(2,7)
@@ -1138,57 +1042,33 @@ state2_beginning:
 
 state2:
     ;check power on
-    lcall CHECK_POWER
-    
+    lcall CHECK_POWER 
     ;Update Time and Temp
     lcall Update_Display
-
-    ;Set_Cursor(1,14)
-    ;mov a, Temp_oven
-    ;lcall SendToLCD
-
-    ;on
-    ;setb OVEN_POWER
-    ;lcall Wait_One_Second
-    ;off
-    ;clr OVEN_POWER
-    ;mov r5, #0
-;four_sec_loop:
-    ; loop back to state2 if run time is less than soak time
- ;   mov a, Time_soak
-  ;  subb a, State_time
-   ; cjne a, #0, state2
-    ;Set_Cursor(1,5)
-	;Display_BCD(Run_time_minutes)
-    ;Set_Cursor(1,7)
-    ;Send_Constant_String(#colon)
-    ;Set_Cursor(1,8)
-    ;Display_BCD(Run_time_seconds)
-    ;Wait_Milli_Seconds(#250)
-    ;inc r5
-    ;cjne r5, #16, four_sec_loop
-        
+    lcall Average_Temp
     
-    ; loop back to state2 if run time is less than soak time
-    ;mov a, Time_soak
-    ;subb a, State_time
-    ;cjne a, #0, state2
+    ; loop back to state2 if run time is less than soak time. If greater than jump to state3 cuz of overflow of time
+     
+    mov a, State_time
+    subb a, Time_soak
+    jnc state2_done
+    jc state2
+
 
 ;*Checking moving to states with buttons---- 
 ;*Will remove after proper temperature reading----
 
-    jb NEXT_STATE_BUTTON, state2
-    Wait_Milli_Seconds(#50) ; debounce time
-	jb NEXT_STATE_BUTTON, state2 ; if button not pressed, loop
-	jnb NEXT_STATE_BUTTON, $ 
+    ;jb NEXT_STATE_BUTTON, state2
+    ;Wait_Milli_Seconds(#50) ; debounce time
+	;jb NEXT_STATE_BUTTON, state2 ; if button not pressed, loop
+	;jnb NEXT_STATE_BUTTON, $ 
     
 state2_done:
-    mov State_time, #0
-    ljmp state3_beginning
+    mov State_time, #3
 
 ; ramp to peak
 state3_beginning:
-    setb OVEN_POWER ;turn power on 100%
+    ;setb OVEN_POWER ;turn power on 100%
 
     ;***clear the screen and set new display***
     lcall Initialize_State_Display
@@ -1202,29 +1082,30 @@ state3_beginning:
 state3: 
     ;check power on
     lcall CHECK_POWER
+    lcall Average_Temp
     
     
     ;Update Time and Temp
     lcall Update_Display
     
-    ;mov a, Temp_oven
-    ;subb a, Temp_refl 
-    ;JNC state3_done    ; if greater, jump to state 4
-    ;JZ state3_done ; if equal to, jump to state 4
-    ;JC state3 ; if less than, go back to state3
+    mov a, Temp_oven           
+    subb a, Temp_refl
+    jnc state3_done    ; if greater, jump to state 4
+    jz state3_done ; if equal to, jump to state 4
+    jc state3 ; if less than, go back to state3
     
-jb NEXT_STATE_BUTTON, state3
-    Wait_Milli_Seconds(#50) ; debounce time
-	jb NEXT_STATE_BUTTON, state3 ; if button not pressed, loop
-	jnb NEXT_STATE_BUTTON, $
+    ;jb NEXT_STATE_BUTTON, state3
+    ;Wait_Milli_Seconds(#50) ; debounce time
+	;jb NEXT_STATE_BUTTON, state3 ; if button not pressed, loop
+	;jnb NEXT_STATE_BUTTON, $
 
 state3_done:
-    mov State_time, #0
-    ljmp state4_beginning
-
+    mov State_time, #4
 
 ; reflow 
 state4_beginning:
+    
+    mov State_time, #0;x00 clear the state time
     ;***clear the screen and set new display***
     lcall Initialize_State_Display
     Set_Cursor(2,7)
@@ -1240,40 +1121,21 @@ state4:
     lcall CHECK_POWER
     ;Update Time and Temp
     lcall Update_Display
-
-    ;on
-    ;setb OVEN_POWER
-    ;lcall Wait_One_Second
-    ;off
-    ;clr OVEN_POWER
-    ;mov r5, #0
-    ;four_sec_loop2:
-        ; loop back to state2 if run time is less than soak time
-    ;    mov a, Time_refl
-    ;    subb a, State_time
-    ;   cjne a, #0, state4
-    ;    Set_Cursor(1, 5)
-	;    Display_BCD(Run_time_minutes)
-    ;    Set_Cursor(1,7)
-    ;    Display_BCD(Run_time_seconds)
-    ;    Wait_Milli_Seconds(#250)
-
-    ;    inc r5
-    ;    cjne r5, #16, four_sec_loop2
-        
+    lcall Average_Temp
     
     ; loop back to state2 if run time is less than soak time
-    ;mov a, Time_refl
-    ;subb a, State_time
-    ;cjne a, #0, state4
+    mov a, State_time
+    subb a, Time_refl
+    jnc state4_done
+    jc state4
 
     ;*Checking moving to states with buttons---- 
 ;*Will remove after proper temperature reading----
 
-    jb NEXT_STATE_BUTTON, state4
-    Wait_Milli_Seconds(#50) ; debounce time
-	jb NEXT_STATE_BUTTON, state4 ; if button not pressed, loop
-	jnb NEXT_STATE_BUTTON, $ 
+    ;jb NEXT_STATE_BUTTON, state4
+    ;Wait_Milli_Seconds(#50) ; debounce time
+	;jb NEXT_STATE_BUTTON, state4 ; if button not pressed, loop
+	;jnb NEXT_STATE_BUTTON, $ 
 
 state4_done: 
     mov State_time, #0
@@ -1298,24 +1160,25 @@ state5:
     
     ; update display
     lcall Update_Display
+    lcall Average_Temp
 
-    ;mov a, Temp_oven
-    ;subb a, #60
-    ;JNC state5    ; if greater, jump back to state 5
-    ;JZ state5 ; if equal to, go back to state5
-    ;JC state5_done ; if less than, go back to state 0
+    mov a, Temp_oven
+    subb a, #60
+    JNC state5    ; if greater, jump back to state 5
+    JZ state5 ; if equal to, go back to state5
+    JC state5_done ; if less than, go back to state 0
 
     ;*Checking moving to states with buttons---- 
 ;*Will remove after proper temperature reading----
 
-    jb NEXT_STATE_BUTTON, state5
-    Wait_Milli_Seconds(#50) ; debounce time
-	jb NEXT_STATE_BUTTON, state5 ; if button not pressed, loop
-	jnb NEXT_STATE_BUTTON, $ 
+    ;jb NEXT_STATE_BUTTON, state5
+    ;Wait_Milli_Seconds(#50) ; debounce time
+	;jb NEXT_STATE_BUTTON, state5 ; if button not pressed, loop
+	;jnb NEXT_STATE_BUTTON, $ 
 
 state5_done:
     mov State_time, #0
     mov States, #0
-    ljmp main
+    ljmp state0
 
 END
