@@ -509,12 +509,6 @@ PLAYBACK_TEMP:
     lcall Send_SPI 
     mov a, #0x31 ; next memory position
     lcall Send_SPI
-    ;mov a, %0+5
-    ;lcall Send_SPI
-    ;mov a, %0+6
-    ;lcall Send_SPI
-    ;mov a, %0+7
-    ;lcall Send_SPI
     mov a, #0x00 ; request first byte to send to DAC
     lcall Send_SPI
 
