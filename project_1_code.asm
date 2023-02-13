@@ -348,7 +348,6 @@ ret
 
 ;SOUND_FSM:
 ;state_0_sound:
-<<<<<<< HEAD
 ;check if 5 seconds has passed, if yes go to state 1, if no exit function 
 ;    jnb five_seconds_flag, Sound_ret
 ;    clr five_seconds_flag
@@ -363,25 +362,10 @@ ret
 ;    subb a, #100
  ;   jnc state_2_sound
  ;   jc state_4_sound
-=======
-; check if 5 seconds has passed, if yes go to state 1
-;    jnb five_seconds_flag
-;    cjne a, #5, state_0_sound
-;    lcall state_1_sound
-
-;state_1_sound:
-; check if temp is greater than 100, if yes go to state 2
-; check if temp is less than 100, if yes go to state 5
-;    mov a, Temp_oven
-;    subb a, #100
- ;   jnc state_2_sound
- ;   jc state_5_sound
->>>>>>> 1108627117ccc4696b362a7c7dfa85c1772e1243
 
 ;state_2_sound:
 ; divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
 ; go to state_3_sound
-<<<<<<< HEAD
    ; mov b, #100
    ; mov a, Temp_oven
    ; div ab
@@ -396,23 +380,10 @@ ret
    
    ; ljmp state_3_sound
 
-=======
-;    mov a, Temp_oven
-;    load_X(a)
-;    load_y(#100)
-;    lcall div32
-;    subb a, #1
-;    jz "play sound 100"
-;    subb a, #2
-  ;  jz "play sound 200"
-   ; lcall state_3_sound
-
->>>>>>> 1108627117ccc4696b362a7c7dfa85c1772e1243
 ;state_3_sound:
 ; check remainder of temp, if it is 0, go back to state_0_sound
 ; if not 0, go to state_4_sound
 
-<<<<<<< HEAD
     ;mov b, #100
     ;mov a, Temp_oven
     ;div ab
@@ -421,86 +392,47 @@ ret
     ;jnz state_4_sound
 
 ;state_4_sound:
-; if T % 100 greater or equal to 20, go to state 5, 
-; if not go to state_5_sound
-
+; if T % 100 greater or equal to 20, go to state_5_sound,
     ;mov b, #100
     ;mov a, Temp_oven
     ;div ab
-    ;mov a, b
-    ;mov b, #100
-    ;div ab
-    ;mov a, b
+    ;mov a, b 
     ;subb a, #20
-    ;jnc state_7_sound
-    ;jz state_7_sound
-    ;ljmp state_5_sound
-=======
-;    mov a, Temp_oven 
-;    load_X(a)
-;    load_y(#100)
-;    lcall div32
-;    load_X(a)
-;    load_y(#100)
-;    lcall mul32
-;    mov r0, a 
-;    mov a, Temp_oven
-;    subb a, r0
-;    jz state_0_sound
-;    jnz state_4_sound
+    ;jnc state_5_sound
+    ;clr a
+; if T % 100 is less than 10, go to state_6_sound
+    ;mov b, #100
+; if T % 100 is greater than 10 and less than 20, go to state_7_sound
 
-;state_4_sound:
-; check if the remainder of temp divided by 100 is greater or equal to than 20, if yes go to state_7_sound
-; if not go to state_5_sound
-
-;  load_X(a)
-;  load_y(#100)
-;  subb a, #20
-;  jnc state_7_sound
-;  jz state_7_sound 
-;  jc state_5_sound
->>>>>>> 1108627117ccc4696b362a7c7dfa85c1772e1243
+    
 
 ;state_5_sound:
-; play number from 1 to 19, based off remainder from temp divided by 100
-; go to state_6_sound
+; play number from 20 to 90 in decades (20, 30, 40, 50, 60, 70, 80, 90), based off remainder from temp divided by 100
+; if (T % 100) % 10 is not equal to 0, go to state_6_sound
+; if (T % 100) % 10 is equal to 0, go to state_8_sound
 
-<<<<<<< HEAD
-=======
-;    mov a, Temp_oven 
-;    load_X(a)
-;    load_y(#20)
-;    lcall div32
-;    load_X(a)
-;    load_y(#20)
-;    lcall mul32
-;    mov r0, a 
-;    mov a, Temp_oven
-;    subb a, r0
+    ;mov a, Temp_oven
+    ;mov b, #100
+    ;div ab
+    ;mov b, a
+    ;
+    ;jz play_sound
+    ;jnz 
 
-    ;and then playsound(a)
-
->>>>>>> 1108627117ccc4696b362a7c7dfa85c1772e1243
-;    lcall state_6_sound
-
+    ;play_sound:
+    ;    PLAYBACK_TEMP()
 
 
 ;state_6_sound:
-; go to state_0_sound
-
-; lcall state_0_sound
+; play 1 - 9
+; go to state_8_sound
 
 ;state_7_sound:
-; play tenths number, by dividing temp by 100 finding the remainder, then dividing the remainder by 10, and correponding the value to the correct 20 - 90 value
+; play 10 - 19
 ; go to state_8_sound
 
 ;state_8_sound:
-; check if there is a ones remainder, if yes go to state_9_sound
-; if not go to state_0_sound
-
-;state_9_sound:
-; play ones remainder
-; ljmp 
+; go to state_0_sound
 
 
 PLAYBACK_TEMP MAC
@@ -553,14 +485,14 @@ PLAYBACK_TEMP MAC
     lcall Send_SPI
     mov a, %0+3 ; next memory position
     lcall Send_SPI 
-    mov a, %0+4
-    lcall Send_SPI
-    mov a, %0+5
-    lcall Send_SPI
-    mov a, %0+6
-    lcall Send_SPI
-    mov a, %0+7
-    lcall Send_SPI
+    ;mov a, %0+4
+    ;lcall Send_SPI
+    ;mov a, %0+5
+    ;lcall Send_SPI
+    ;mov a, %0+6
+    ;lcall Send_SPI
+    ;mov a, %0+7
+    ;lcall Send_SPI
     mov a, %0 ; request first byte to send to DAC
     lcall Send_SPI
 
