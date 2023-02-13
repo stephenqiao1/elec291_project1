@@ -2,6 +2,8 @@ $NOLIST
 $MODLP51RC2
 $LIST
 
+
+
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;These EQU must match the wiring between the microcontroller and ADC
 CLK  EQU 22118400
@@ -115,6 +117,10 @@ $LIST
 
 $NOLIST
 $include(math32.inc)
+$LIST
+
+$NOLIST
+$INCLUDE(sound_for_project1_index.asm)
 $LIST
 
 bseg
@@ -439,13 +445,16 @@ state_5_sound:
 
 state_6_sound:
 ; play 1 - 9
- ljmp PLAYBACK_TEMP
+    ljmp PLAYBACK_TEMP
 ; go to state_8_sound
+    ljmp state_8_sound
+
 
 state_7_sound:
 ; play 10 - 19
- ljmp PLAYBACK_TEMP
+    ljmp PLAYBACK_TEMP
 ; go to state_8_sound 
+    ljmp state_8_sound
 
 state_8_sound:
 ; go to state_0_sound
@@ -489,19 +498,17 @@ PLAYBACK_TEMP:
     clr SPEAKER ; Turn off speaker
 
     clr FLASH_CE ; Enable SPI Flash
-    mov READ_BYTES, #3
+    ;mov READ_BYTES, #3
     mov a, #READ_BYTES
     lcall Send_SPI
     ; Set the initial position in memory where to start playing
     
     mov a, #0x00 ; change initial position
     lcall Send_SPI
-    mov a, #0x00 ; next memory position
+    mov a, #0x4b ; next memory position
     lcall Send_SPI 
-    mov a, #0x2d ; next memory position
+    mov a, #0x31 ; next memory position
     lcall Send_SPI
-    ;mov a, %0+4
-    ;lcall Send_SPI
     ;mov a, %0+5
     ;lcall Send_SPI
     ;mov a, %0+6
@@ -512,9 +519,9 @@ PLAYBACK_TEMP:
     lcall Send_SPI
 
     ; How many bytes to play?
-    mov w+2, #0x00 
-    mov w+1, #0x1c 
-    mov w+0, #0x5b 
+    mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+    mov w+1, #0x40 ; Load the middle byte of the number of bytes to play
+    mov w+0, #0x99 ; Load the low byte of the number of bytes to play
  
     setb SPEAKER ;Turn on speaker
     setb TR1 ;Start playback by enabling Timer1 
@@ -933,7 +940,6 @@ main:
     mov States, #0
     
 state0: ; idle
-
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
@@ -951,6 +957,8 @@ state0: ; idle
     lcall CHECK_RTIME
     lcall CHECK_RTEMP
     lcall Save_Configuration
+
+    lcall PLAYBACK_TEMP
     
     ;lcall Check_Temp
 
