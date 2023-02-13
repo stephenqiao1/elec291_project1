@@ -462,9 +462,8 @@ state_8_sound:
 
 
 PLAYBACK_TEMP:
-    
-; ****INITIALIZATION****
-; Configure SPI pins and turn off speaker
+    ; ****INITIALIZATION****
+    ; Configure SPI pins and turn off speaker
 	anl P2M0, #0b_1100_1110
 	orl P2M1, #0b_0011_0001
 	setb MY_MISO  ; Configured as input
@@ -503,22 +502,23 @@ PLAYBACK_TEMP:
     lcall Send_SPI
     ; Set the initial position in memory where to start playing
     
-    mov a, #0x00 ; change initial position
+    mov a, #0x02 ; change initial position
     lcall Send_SPI
-    mov a, #0x4b ; next memory position
+    mov a, #0xd5 ; next memory position
     lcall Send_SPI 
-    mov a, #0x31 ; next memory position
+    mov a, #0x2d ; next memory position
     lcall Send_SPI
-    mov a, #0x00 ; request first byte to send to DAC
+    mov a, #0x02 ; request first byte to send to DAC
     lcall Send_SPI
 
     ; How many bytes to play?
     mov w+2, #0x00 ; Load the high byte of the number of bytes to play
-    mov w+1, #0x40 ; Load the middle byte of the number of bytes to play
-    mov w+0, #0x99 ; Load the low byte of the number of bytes to play
+    mov w+1, #0x39 ; Load the middle byte of the number of bytes to play
+    mov w+0, #0x6a ; Load the low byte of the number of bytes to play
  
     setb SPEAKER ;Turn on speaker
     setb TR1 ;Start playback by enabling Timer1 
+    ret
     
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;***LCD FXNS
@@ -928,6 +928,8 @@ main:
 
     lcall Load_Configuration
 
+    lcall PLAYBACK_TEMP
+
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
@@ -951,8 +953,6 @@ state0: ; idle
     lcall CHECK_RTIME
     lcall CHECK_RTEMP
     lcall Save_Configuration
-
-    lcall PLAYBACK_TEMP
     
     ;lcall Check_Temp
 
