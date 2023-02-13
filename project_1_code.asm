@@ -346,96 +346,113 @@ CHECK_POWER:
 CHECK_POWER_END:
 ret
 
-;SOUND_FSM:
-;state_0_sound:
+SOUND_FSM:
+state_0_sound:
 ;check if 5 seconds has passed, if yes go to state 1, if no exit function 
-;    jnb five_seconds_flag, Sound_ret
-;    clr five_seconds_flag
-;    ljmp state_1_sound
-;Sound_ret:
-;    ret
+    jnb five_seconds_flag, Sound_ret
+    clr five_seconds_flag
+    ljmp state_1_sound
+Sound_ret:
+    ret
 
-;state_1_sound:
+state_1_sound:
 ; check if temp is greater than 100, if yes go to state 2
 ; check if temp is less than 100, if yes go to state 4
-;    mov a, Temp_oven
-;    subb a, #100
- ;   jnc state_2_sound
- ;   jc state_4_sound
+    mov a, Temp_oven
+    subb a, #100
+    jnc state_2_sound
+    jc state_4_sound
 
-;state_2_sound:
-; divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
+state_2_sound:
+;divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
 ; go to state_3_sound
-   ; mov b, #100
-   ; mov a, Temp_oven
-   ; div ab
-   ; subb a, #1
-   ; jz PLAYBACK_TEMP("sound 100")
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    subb a, #1
+    jz play_sound_1
 
-   ; mov b, #100
-   ; mov a, Temp_oven
-   ; div ab
-   ; subb a, #2
-   ; jz PLAYBACK_TEMP("sound 200")
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    subb a, #2
+    jz play_sound_1
    
-   ; ljmp state_3_sound
+   play_sound_1: 
+    ljmp PLAYBACK_TEMP
 
-;state_3_sound:
+    ljmp state_3_sound
+
+
+state_3_sound:
 ; check remainder of temp, if it is 0, go back to state_0_sound
 ; if not 0, go to state_4_sound
 
-    ;mov b, #100
-    ;mov a, Temp_oven
-    ;div ab
-    ;mov a, b
-    ;jz state_0_sound
-    ;jnz state_4_sound
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    mov a, b
+    jz state_0_sound
+    jnz state_4_sound
 
-;state_4_sound:
+state_4_sound:
 ; if T % 100 greater or equal to 20, go to state_5_sound,
-    ;mov b, #100
-    ;mov a, Temp_oven
-    ;div ab
-    ;mov a, b 
-    ;subb a, #20
-    ;jnc state_5_sound
-    ;clr a
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    mov a, b 
+    subb a, #20
+    jnc state_5_sound
+    clr a
 ; if T % 100 is less than 10, go to state_6_sound
-    ;mov b, #100
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    mov a, b
+    subb a, #10
+    jc state_6_sound
+    clr a
 ; if T % 100 is greater than 10 and less than 20, go to state_7_sound
-
+    ljmp state_7_sound
     
 
-;state_5_sound:
+state_5_sound:
 ; play number from 20 to 90 in decades (20, 30, 40, 50, 60, 70, 80, 90), based off remainder from temp divided by 100
 ; if (T % 100) % 10 is not equal to 0, go to state_6_sound
 ; if (T % 100) % 10 is equal to 0, go to state_8_sound
 
-    ;mov a, Temp_oven
-    ;mov b, #100
-    ;div ab
-    ;mov b, a
-    ;
-    ;jz play_sound
-    ;jnz 
+    mov a, Temp_oven
+    mov b, #100
+    div ab
+    mov a, b
+    mov b, #10
+    div ab
+    mov a, b
+    jz play_sound
+    jnz state_6_sound
+    
 
-    ;play_sound:
-    ;    PLAYBACK_TEMP()
+    play_sound:
+        ljmp PLAYBACK_TEMP
+        ljmp state_8_sound
 
 
-;state_6_sound:
+state_6_sound:
 ; play 1 - 9
+ ljmp PLAYBACK_TEMP
 ; go to state_8_sound
 
-;state_7_sound:
+state_7_sound:
 ; play 10 - 19
-; go to state_8_sound
+ ljmp PLAYBACK_TEMP
+; go to state_8_sound 
 
-;state_8_sound:
+state_8_sound:
 ; go to state_0_sound
+    ljmp state_0_sound
 
 
-PLAYBACK_TEMP MAC
+PLAYBACK_TEMP:
     
 ; ****INITIALIZATION****
 ; Configure SPI pins and turn off speaker
@@ -477,14 +494,12 @@ PLAYBACK_TEMP MAC
     lcall Send_SPI
     ; Set the initial position in memory where to start playing
     
-    mov a, %0 ; change initial position
+    mov a, #0x00 ; change initial position
     lcall Send_SPI
-    mov a, %0+1 ; next memory position
+    mov a, #0x00 ; next memory position
     lcall Send_SPI 
-    mov a, %0+2 ; next memory position
+    mov a, #0x2d ; next memory position
     lcall Send_SPI
-    mov a, %0+3 ; next memory position
-    lcall Send_SPI 
     ;mov a, %0+4
     ;lcall Send_SPI
     ;mov a, %0+5
@@ -493,18 +508,16 @@ PLAYBACK_TEMP MAC
     ;lcall Send_SPI
     ;mov a, %0+7
     ;lcall Send_SPI
-    mov a, %0 ; request first byte to send to DAC
+    mov a, #0x00 ; request first byte to send to DAC
     lcall Send_SPI
 
     ; How many bytes to play?
-    mov w+2, #0x3f //63
-    mov w+1, #0xff //255
-    mov w+0, #0xff 
+    mov w+2, #0x00 
+    mov w+1, #0x1c 
+    mov w+0, #0x5b 
  
     setb SPEAKER ;Turn on speaker
     setb TR1 ;Start playback by enabling Timer1 
-
-    ENDMAC 
     
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;***LCD FXNS
