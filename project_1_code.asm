@@ -430,7 +430,7 @@ state_5_sound:
 ; if (T % 100) % 10 is equal to 0, go to state_8_sound
 
     mov a, Temp_oven
-    mov b, #100
+    mov b, #100 
     div ab
     mov a, b
     mov b, #10
