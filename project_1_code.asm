@@ -348,6 +348,22 @@ ret
 
 ;SOUND_FSM:
 ;state_0_sound:
+<<<<<<< HEAD
+;check if 5 seconds has passed, if yes go to state 1, if no exit function 
+;    jnb five_seconds_flag, Sound_ret
+;    clr five_seconds_flag
+;    ljmp state_1_sound
+;Sound_ret:
+;    ret
+
+;state_1_sound:
+; check if temp is greater than 100, if yes go to state 2
+; check if temp is less than 100, if yes go to state 4
+;    mov a, Temp_oven
+;    subb a, #100
+ ;   jnc state_2_sound
+ ;   jc state_4_sound
+=======
 ; check if 5 seconds has passed, if yes go to state 1
 ;    jnb five_seconds_flag
 ;    cjne a, #5, state_0_sound
@@ -360,10 +376,27 @@ ret
 ;    subb a, #100
  ;   jnc state_2_sound
  ;   jc state_5_sound
+>>>>>>> 1108627117ccc4696b362a7c7dfa85c1772e1243
 
 ;state_2_sound:
 ; divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
 ; go to state_3_sound
+<<<<<<< HEAD
+   ; mov b, #100
+   ; mov a, Temp_oven
+   ; div ab
+   ; subb a, #1
+   ; jz PLAYBACK_TEMP("sound 100")
+
+   ; mov b, #100
+   ; mov a, Temp_oven
+   ; div ab
+   ; subb a, #2
+   ; jz PLAYBACK_TEMP("sound 200")
+   
+   ; ljmp state_3_sound
+
+=======
 ;    mov a, Temp_oven
 ;    load_X(a)
 ;    load_y(#100)
@@ -374,14 +407,35 @@ ret
   ;  jz "play sound 200"
    ; lcall state_3_sound
 
+>>>>>>> 1108627117ccc4696b362a7c7dfa85c1772e1243
 ;state_3_sound:
 ; check remainder of temp, if it is 0, go back to state_0_sound
-    ; ***how to get remainder of 23/4***
-    ; integer division of 23 and 4 = 5
-    ; multiply 5 by 4 = 20
-    ; subtract 23 by 20 = 3 <--- remainder
 ; if not 0, go to state_4_sound
 
+<<<<<<< HEAD
+    ;mov b, #100
+    ;mov a, Temp_oven
+    ;div ab
+    ;mov a, b
+    ;jz state_0_sound
+    ;jnz state_4_sound
+
+;state_4_sound:
+; if T % 100 greater or equal to 20, go to state 5, 
+; if not go to state_5_sound
+
+    ;mov b, #100
+    ;mov a, Temp_oven
+    ;div ab
+    ;mov a, b
+    ;mov b, #100
+    ;div ab
+    ;mov a, b
+    ;subb a, #20
+    ;jnc state_7_sound
+    ;jz state_7_sound
+    ;ljmp state_5_sound
+=======
 ;    mov a, Temp_oven 
 ;    load_X(a)
 ;    load_y(#100)
@@ -405,11 +459,14 @@ ret
 ;  jnc state_7_sound
 ;  jz state_7_sound 
 ;  jc state_5_sound
+>>>>>>> 1108627117ccc4696b362a7c7dfa85c1772e1243
 
 ;state_5_sound:
 ; play number from 1 to 19, based off remainder from temp divided by 100
 ; go to state_6_sound
 
+<<<<<<< HEAD
+=======
 ;    mov a, Temp_oven 
 ;    load_X(a)
 ;    load_y(#20)
@@ -423,6 +480,7 @@ ret
 
     ;and then playsound(a)
 
+>>>>>>> 1108627117ccc4696b362a7c7dfa85c1772e1243
 ;    lcall state_6_sound
 
 
@@ -442,6 +500,7 @@ ret
 
 ;state_9_sound:
 ; play ones remainder
+; ljmp 
 
 
 PLAYBACK_TEMP MAC
@@ -716,6 +775,9 @@ Check_Temp:
 	mov x+2, #0
 	mov x+3, #0
 	
+    Load_y(22)
+    lcall add32
+
 ;Check_Temp_done_2:
     ;jnb one_seconds_flag, Check_Temp_done
     ;mov a, result+1
