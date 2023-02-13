@@ -352,7 +352,6 @@ CHECK_POWER:
 CHECK_POWER_END:
 ret
 
-<<<<<<< Updated upstream
 SOUND_FSM:
 state_0_sound:
 ;check if 5 seconds has passed, if yes go to state 1, if no exit function 
@@ -361,21 +360,10 @@ state_0_sound:
     ljmp state_1_sound
 Sound_ret:
     ret
-=======
-;SOUND_FSM:
-;state_0_sound:
-;check if 5 seconds has passed, if yes go to state 1, if no exit function 
-;    jnb five_seconds_flag, Sound_ret
-;    clr five_seconds_flag
-;    ljmp state_1_sound
-;Sound_ret:
-;    ret
->>>>>>> Stashed changes
 
-;state_1_sound:
+state_1_sound:
 ; check if temp is greater than 100, if yes go to state 2
 ; check if temp is less than 100, if yes go to state 4
-<<<<<<< Updated upstream
     mov a, Temp_oven
     subb a, #100
     jnc state_2_sound
@@ -401,35 +389,11 @@ state_2_sound:
 
     ljmp state_3_sound
 
-=======
-;    mov a, Temp_oven
-;    subb a, #100
- ;   jnc state_2_sound
- ;   jc state_4_sound
 
-;state_2_sound:
-; divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
-; go to state_3_sound
-   ; mov b, #100
-   ; mov a, Temp_oven
-   ; div ab
-   ; subb a, #1
-   ; jz PLAYBACK_TEMP("sound 100")
->>>>>>> Stashed changes
-
-   ; mov b, #100
-   ; mov a, Temp_oven
-   ; div ab
-   ; subb a, #2
-   ; jz PLAYBACK_TEMP("sound 200")
-   
-   ; ljmp state_3_sound
-
-;state_3_sound:
+state_3_sound:
 ; check remainder of temp, if it is 0, go back to state_0_sound
 ; if not 0, go to state_4_sound
 
-<<<<<<< Updated upstream
     mov b, #100
     mov a, Temp_oven
     div ab
@@ -477,48 +441,8 @@ state_5_sound:
     play_sound:
         ljmp PLAYBACK_TEMP
         ljmp state_8_sound
-=======
-    ;mov b, #100
-    ;mov a, Temp_oven
-    ;div ab
-    ;mov a, b
-    ;jz state_0_sound
-    ;jnz state_4_sound
-
-;state_4_sound:
-; check if the remainder of temp divided by 100 is greater or equal to than 20, if yes go to state_7_sound
-; if not go to state_5_sound
-
-    ;mov b, #100
-    ;mov a, Temp_oven
-    ;div ab
-    ;mov a, b
-    ;mov b, #100
-    ;div ab
-    ;mov a, b
-    ;subb a, #20
-    ;jnc state_7_sound
-    ;jz state_7_sound
-    ;ljmp state_5_sound
-
-;state_5_sound:
-; play number from 1 to 19, based off remainder from temp divided by 100
-; go to state_6_sound
-
-    ;mov b, #20
-    ;mov a, Temp_oven
-    ;div ab
-    ;PLAYBACK_TEMP(address of b)
-;    lcall state_6_sound
 
 
-
-;state_6_sound:
-; go to state_0_sound
->>>>>>> Stashed changes
-
-
-<<<<<<< Updated upstream
 state_6_sound:
 ; play 1 - 9
     ljmp PLAYBACK_TEMP
@@ -538,22 +462,6 @@ state_8_sound:
 
 
 PLAYBACK_TEMP:
-=======
-;state_7_sound:
-; play tenths number, by dividing temp by 100 finding the remainder, then dividing the remainder by 10, and correponding the value to the correct 20 - 90 value
-; go to state_8_sound
-
-;state_8_sound:
-; check if there is a ones remainder, if yes go to state_9_sound
-; if not go to state_0_sound
-
-;state_9_sound:
-; play ones remainder
-; ljmp 
-
-
-PLAYBACK_TEMP MAC
->>>>>>> Stashed changes
     
 ; ****INITIALIZATION****
 ; Configure SPI pins and turn off speaker
@@ -590,16 +498,11 @@ PLAYBACK_TEMP MAC
     clr SPEAKER ; Turn off speaker
 
     clr FLASH_CE ; Enable SPI Flash
-<<<<<<< Updated upstream
     ;mov READ_BYTES, #3
-=======
-    mov READ_BYTES, #3
->>>>>>> Stashed changes
     mov a, #READ_BYTES
     lcall Send_SPI
     ; Set the initial position in memory where to start playing
     
-<<<<<<< Updated upstream
     mov a, #0x00 ; change initial position
     lcall Send_SPI
     mov a, #0x4b ; next memory position
@@ -616,36 +519,6 @@ PLAYBACK_TEMP MAC
  
     setb SPEAKER ;Turn on speaker
     setb TR1 ;Start playback by enabling Timer1 
-=======
-    mov a, %0 ; change initial position
-    lcall Send_SPI
-    mov a, %0+1 ; next memory position
-    lcall Send_SPI 
-    mov a, %0+2 ; next memory position
-    lcall Send_SPI
-    mov a, %0+3 ; next memory position
-    lcall Send_SPI 
-    mov a, %0+4
-    lcall Send_SPI
-    mov a, %0+5
-    lcall Send_SPI
-    mov a, %0+6
-    lcall Send_SPI
-    mov a, %0+7
-    lcall Send_SPI
-    mov a, %0 ; request first byte to send to DAC
-    lcall Send_SPI
-
-    ; How many bytes to play?
-    mov w+2, #0x3f //63
-    mov w+1, #0xff //255
-    mov w+0, #0xff 
- 
-    setb SPEAKER ;Turn on speaker
-    setb TR1 ;Start playback by enabling Timer1 
-
-    ENDMAC 
->>>>>>> Stashed changes
     
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;***LCD FXNS
@@ -767,8 +640,8 @@ Save_Configuration:
     loadbyte(time_refl) ; @0x7f83
     loadbyte(#0x55) ; First key value @0x7f84
     loadbyte(#0xAA) ; Second key value @0x7f85
-    mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0) 
-    orl EECON, #0b01000000 ; Enable auto-erase on next write sequence  
+    mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0)Â 
+    orl EECON, #0b01000000 ; Enable auto-erase on next write sequence Â 
     mov FCON, #0x50 ; Write trigger first byte
     mov FCON, #0xA0 ; Write trigger second byte
     ; CPU idles until writing of flash completes.
@@ -1093,6 +966,7 @@ state0_done:
     setb enable_clk
    
      
+
 state1_beginning:
     
     ;Start Run Time
