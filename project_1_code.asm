@@ -369,8 +369,14 @@ state_1_sound:
 ; check if temp is less than 100, if yes go to state 4
     mov a, Temp_oven
     subb a, #100
-    jnc state_2_sound
-    jc state_4_sound
+    jnc state_2_sound_hop
+    jc state_4_sound_hop
+
+    state_2_sound_hop:
+        ljmp state_2_sound
+
+    state_4_sound_hop:
+        ljmp state_4_sound
 
 state_2_sound:
 ;divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
@@ -410,8 +416,11 @@ state_3_sound:
     mov a, Temp_oven
     div ab
     mov a, b
-    jz state_0_sound
+    jz state_0_sound_hop
     jnz state_4_sound
+
+    state_0_sound_hop:
+        ljmp state_0_sound
 
 state_4_sound:
 ; if T % 100 greater or equal to 20, go to state_5_sound,
@@ -428,10 +437,13 @@ state_4_sound:
     div ab
     mov a, b
     subb a, #10
-    jc state_6_sound
+    jc state_6_sound_hop0
     clr a
 ; if T % 100 is greater than 10 and less than 20, go to state_7_sound
     ljmp state_7_sound
+
+    state_6_sound_hop0:
+        ljmp state_6_sound
     
 
 state_5_sound:
@@ -447,43 +459,46 @@ state_5_sound:
     div ab
     mov a, b
     jz play_sound
-    jnz state_6_sound
+    jnz state_6_sound_hop1
+
+    state_6_sound_hop1:
+        ljmp state_6_sound
     
 
     play_sound:
         ;ljmp PLAYBACK_TEMP
-        cjne a, #0x14, play_30   ; 20
+        cjne a, #0x14, play_30   
 
         PLAYBACK_TEMP(#0x03,#0xef,#0xd0, #0x27,#0x10)
         ljmp state_8_hop0
 
         play_30:
-            cjne a, #0x1e, play_30
+            cjne a, #0x1e, play_40
             PLAYBACK_TEMP(#0x04,#0x16,#0xe0, #0x23,#0x28)
             ljmp state_8_hop0
 
         play_40:
-            cjne a, #0x1e, play_30
+            cjne a, #0x28, play_50
             PLAYBACK_TEMP(#0x04,#0x3d,#0xf0, #0x1f,#0x40)
             ljmp state_8_hop0
 
         play_50:
-            cjne a, #0x1e, play_30
+            cjne a, #0x32, play_60
             PLAYBACK_TEMP(#0x04,#0x51,#0x78, #0x23,#0x28)
             ljmp state_8_hop0
 
         play_60:
-            cjne a, #0x1e, play_30
+            cjne a, #0x3c, play_70
             PLAYBACK_TEMP(#0x04,#0x74,#0xa0, #0x27,#0x10)
             ljmp state_8_hop0
 
         play_70:
-            cjne a, #0x1e, play_30
+            cjne a, #0x46, play_80
             PLAYBACK_TEMP(#0x04,#0x9b,#0xb0, #0x32,#0xc8)
             ljmp state_8_hop0
 
         play_80:
-            cjne a, #0x1e, play_30
+            cjne a, #0x50, play_90
             PLAYBACK_TEMP(#0x04,#0xc6,#0xa8, #0x23,#0x28)
             ljmp state_8_hop0
 
@@ -595,9 +610,9 @@ state_7_sound:
     play_19:
         PLAYBACK_TEMP(#0x03,#0xc8,#0xc0, #0x27,#0x10)
 
-state_8_hop2:
-; go to state_8_sound
-    ljmp state_8_sound
+    state_8_hop2:
+    ; go to state_8_sound
+        ljmp state_8_sound
 
 state_8_sound:
 ; go to state_0_sound
@@ -1158,6 +1173,7 @@ state1_beginning:
     ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
 	mov pwm_ratio+0, #low(1000)
 	mov pwm_ratio+1, #high(1000)
+    PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
     sjmp state1
     
 main_1:
@@ -1166,12 +1182,12 @@ main_1:
 state1: ; ramp to soak
     
     ;PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
-    PLAYBACK_TEMP(#0x02,#0x6d,#0xe1, #0x15,#0x18)
     ;check power on
     lcall CHECK_POWER
     ;Update Time and Temp
     lcall Update_Display
     lcall Average_Temp
+    lcall SOUND_FSM
 
 Check_Temp_done1:
 
@@ -1210,10 +1226,10 @@ state2_beginning:
     ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
 	mov pwm_ratio+0, #low(200)
 	mov pwm_ratio+1, #high(000)
-
-state2:
     ; Produces SOAK on speaker
     PLAYBACK_TEMP(#0x00,#0x44,#0xdd, #0x4e,#0x20)
+
+state2:
     ;check power on
     lcall CHECK_POWER 
     ;Update Time and Temp
@@ -1252,9 +1268,10 @@ state3_beginning:
 	mov pwm_ratio+0, #low(1000)
 	mov pwm_ratio+1, #high(1000)
 
-state3: 
     ; Produces RAMP TO PEAK on speaker
     PLAYBACK_TEMP(#0x00,#0x8b,#0xca, #0x75,#0x30)
+
+state3: 
     ;check power on
     lcall CHECK_POWER
     lcall Average_Temp
@@ -1290,10 +1307,11 @@ state4_beginning:
 	mov pwm_ratio+0, #low(200)
 	mov pwm_ratio+1, #high(000)
 
-
-state4:
     ; Produces REFLOW on speaker
     PLAYBACK_TEMP(#0x00,#0xf0,#0x63, #0x59,#0xd8)
+
+
+state4:
     ;check power on
     lcall CHECK_POWER
     ;Update Time and Temp
@@ -1330,6 +1348,9 @@ state5_beginning: ; turn oven off
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
+
+    ; Produces COOLING on speaker
+    PLAYBACK_TEMP(#0x01,#0x48,#0x9a, #0x6b,#0x6c)
 
 state5:
     ;check power on

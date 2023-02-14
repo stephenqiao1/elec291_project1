@@ -1,0 +1,2749 @@
+                  2   $LIST
+0000              4   
+0000              5   
+0000              6   ;-------------------------------------------------------------------------------------------------------------------------------
+0000              7   ;These EQU must match the wiring between the microcontroller and ADC
+0000              8   CLK  EQU 22118400
+0000              9   TIMER1_RATE    EQU 25000 ;22050     ; 22050Hz is the sampling rate of the wav file we are playing
+0000             10   TIMER1_RELOAD  EQU 0x10000-(CLK/TIMER1_RATE)
+0000             11   BAUD equ 115200
+0000             12   BRG_VAL equ (0x100-(CLK/(16*BAUD)))
+0000             13   
+0000             14   TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
+0000             15   TIMER2_RELOAD EQU (65536-(CLK/TIMER2_RATE))
+0000             16   
+0000             17   ;shjfjdfs
+0000             18   ;-------------------------------------------------------------------------------------------------------------------------------
+0000             19   ;Button Pin Mapping
+0000             20   NEXT_STATE_BUTTON  equ P0.5
+0000             21   STIME_BUTTON    equ P0.2
+0000             22   STEMP_BUTTON    equ P0.3
+0000             23   RTIME_BUTTON    equ P0.4
+0000             24   RTEMP_BUTTON    equ P0.6
+0000             25   
+0000             26   POWER_BUTTON    equ P4.5
+0000             27   SHIFT_BUTTON    equ p0.4
+0000             28   
+0000             29   ;Output Pins
+0000             30   OVEN_POWER      equ P0.7
+0000             31   SPEAKER         equ P2.6
+0000             32   
+0000             33   PWM_OUTPUT    equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
+0000             34   
+0000             35   
+0000             36   ;FLASH pins
+0000             37   MY_MOSI_SOUND EQU P2.4
+0000             38   MY_MISO_SOUND EQU P2.1
+0000             39   MY_SCLK_SOUND EQU P2.0
+0000             40   FLASH_CE        equ P2.5
+0000             41   
+0000             42   ;Thermowire Pins
+0000             43   CE_ADC    EQU  P1.7
+0000             44   MY_MOSI   EQU  P1.6
+0000             45   MY_MISO   EQU  P1.5
+0000             46   MY_SCLK   EQU  P1.4 
+0000             47   
+0000             48   ; Commands supported by the SPI flash memory according to the datasheet
+0000             49   WRITE_ENABLE     EQU 0x06  ; Address:0 Dummy:0 Num:0
+0000             50   WRITE_DISABLE    EQU 0x04  ; Address:0 Dummy:0 Num:0
+0000             51   READ_STATUS      EQU 0x05  ; Address:0 Dummy:0 Num:1 to infinite
+0000             52   READ_BYTES       EQU 0x03  ; Address:3 Dummy:0 Num:1 to infinite
+0000             53   READ_SILICON_ID  EQU 0xab  ; Address:0 Dummy:3 Num:1 to infinite
+0000             54   FAST_READ        EQU 0x0b  ; Address:3 Dummy:1 Num:1 to infinite
+0000             55   WRITE_STATUS     EQU 0x01  ; Address:0 Dummy:0 Num:1
+0000             56   WRITE_BYTES      EQU 0x02  ; Address:3 Dummy:0 Num:1 to 256
+0000             57   ERASE_ALL        EQU 0xc7  ; Address:0 Dummy:0 Num:0
+0000             58   ERASE_BLOCK      EQU 0xd8  ; Address:3 Dummy:0 Num:0
+0000             59   READ_DEVICE_ID   EQU 0x9f  ; Address:0 Dummy:2 Num:1 to infinite
+0000             60   
+0000             61   ; These 'equ' must match the hardware wiring
+0000             62   LCD_RS equ P3.2
+0000             63   ;LCD_RW equ PX.X ; Not used in this code, connect the pin to GND
+0000             64   LCD_E  equ P3.3
+0000             65   LCD_D4 equ P3.4
+0000             66   LCD_D5 equ P3.5
+0000             67   LCD_D6 equ P3.6
+0000             68   LCD_D7 equ P3.7
+0000             69   
+0000             70   ;-------------------------------------------------------------------------------------------------------------------------------
+0000             71   
+0000             72   org 0x0000
+0000 0210F4      73       ljmp main
+0003             74   
+0003             75   ; External interrupt 0 vector (not used in this code)
+0003             76   org 0x0003
+0003 32          77            reti
+0004             78   
+0004             79   ; Timer/Counter 0 overflow interrupt vector
+000B             80   org 0x000B
+000B 32          81            reti
+000C             82   
+000C             83   ; External interrupt 1 vector (not used in this code)
+0013             84   org 0x0013
+0013 32          85            reti
+0014             86   
+0014             87   ; Timer/Counter 1 overflow interrupt vector
+001B             88   org 0x001B
+001B 021048      89            ljmp Timer1_ISR
+001E             90   
+001E             91   ; Serial port receive/transmit interrupt vector (not used in this code)
+0023             92   org 0x0023 
+0023 32          93            reti
+0024             94            
+0024             95   ; Timer/Counter 2 overflow interrupt vector
+002B             96   org 0x002B
+002B 02109E      97       ljmp Timer2_ISR
+002E             98   ;-------------------------------------------------------------------------------------------------------------------------------
+002E             99   ; Place our variables here
+0030            100   DSEG at 0x30 ; Before the state machine!
+0030            101   Count1ms:         ds 2 ; Used to determine when one second has passed
+0032            102   Count5sec:        ds 1
+0033            103   States:           ds 1
+0034            104   Temp_soak:        ds 1
+0035            105   Time_soak:        ds 1
+0036            106   Temp_refl:        ds 1
+0037            107   Time_refl:        ds 1
+0038            108   Run_time_seconds: ds 1
+0039            109   Run_time_minutes: ds 1
+003A            110   State_time:       ds 1
+003B            111   Temp_oven:        ds 1
+003C            112   KTemp_oven:       ds 1
+003D            113   x:                ds 4
+0041            114   y:                ds 4
+0045            115   bcd:              ds 5
+004A            116   Result:           ds 2
+004C            117   w:                ds 3
+004F            118   pwm_ratio:        ds 2
+0051            119   average_count:    ds 1
+0052            120   K_or_C:           ds 1
+0053            121   
+                123   $LIST
+00F0            125   
+                546   $LIST
+                127   $LIST
+0360            129   
+                131   $LIST
+03E7            133   
+0000            134   bseg
+0000            135   one_seconds_flag:  dbit 1
+0001            136   five_seconds_flag: dbit 1
+0002            137   enable_clk:        dbit 1
+0003            138   mf:                dbit 1
+0004            139   
+03E7            140   cseg
+03E7            141   
+03E7            142   ;-------------------------------------------------------------------------------------------------------------------------------
+03E7            143   ;***Messages To Display*** 
+03E7            144   
+03E7            145   ;shortened labels
+03E7 53546D70   146   STemp:  db 'STmp:', 0
+     3A00
+03ED 53546D3A   147   STime:  db 'STm:', 0
+     00
+03F2 52546D70   148   RTemp:  db 'RTmp:', 0
+     3A00
+03F8 52546D3A   149   RTime:  db 'RTm:', 0
+     00
+03FD            150   
+03FD            151   ;lables for runnning oven
+03FD 53746174   152   state:     db 'State>' , 0
+     653E00
+0404 546D653E   153   time:      db 'Tme>' , 0
+     00
+0409 3A00       154   colon:     db ':', 0
+040B 546D703E   155   temp:      db 'Tmp>', 0
+     00
+0410            156   
+0410            157   ;labels for changin parameters
+0410 5265666C   158   ReflowTemp:  db 'Reflow Temperature:', 0
+     6F772054
+     656D7065
+     72617475
+     72653A00
+0424 5265666C   159   ReflowTime:  db 'Reflow Time:', 0
+     6F772054
+     696D653A
+     00
+0431 536F616B   160   SoakTime:    db 'Soak Time:', 0
+     2054696D
+     653A00
+043C 536F616B   161   SoakTemp:    db 'Soak Temperature:', 0
+     2054656D
+     70657261
+     74757265
+     3A00
+044E            162   
+044E            163   
+044E            164   ;Current State in Oven
+044E 52616D70   165   Ramp2Soak: db 'Ramp-Soak' , 0
+     2D536F61
+     6B00
+0458 536F616B   166   Soak:      db 'Soak' , 0
+     00
+045D 52616D70   167   Ramp2Peak: db 'Ramp-Peak' , 0
+     2D506561
+     6B00
+0467 5265666C   168   Reflow:    db 'Reflow' , 0
+     6F7700
+046E 436F6F6C   169   Cooling:   db 'Cooling' , 0
+     696E6700
+0476            170   
+0476            171   ;-------------------------------------------------------------------------------------------------------------------------------
+0476            172   ;FXNS FOR THERMOWIRE
+0476            173   
+0476            174   ;initialize SPI 
+0476            175   INI_SPI:
+0476 D295       176            setb MY_MISO          ; Make MISO an input pin
+0478 C294       177            clr MY_SCLK           ; Mode 0,0 default
+047A 22         178            ret
+047B            179   DO_SPI_G:
+047B C0E0       180            push acc
+047D 7900       181            mov R1, #0            ; Received byte stored in R1
+047F 7A08       182            mov R2, #8            ; Loop counter (8-bits)
+0481            183   DO_SPI_G_LOOP:
+0481 E8         184            mov a, R0             ; Byte to write is in R0
+0482 33         185            rlc a                 ; Carry flag has bit to write
+0483 F8         186            mov R0, a
+0484 9296       187            mov MY_MOSI, c
+0486 D294       188            setb MY_SCLK          ; Transmit
+0488 A295       189            mov c, MY_MISO        ; Read received bit
+048A E9         190            mov a, R1             ; Save received bit in R1
+048B 33         191            rlc a
+048C F9         192            mov R1, a
+048D C294       193            clr MY_SCLK
+048F DAF0       194            djnz R2, DO_SPI_G_LOOP
+0491 D0E0       195            pop acc
+0493 22         196   ret
+0494            197   
+0494            198   Send_SPI:
+                199   	SPIBIT MAC
+                200   	    ; Send/Receive bit %0
+                201   		rlc a
+                202   		mov MY_MOSI_SOUND, c
+                203   		setb MY_SCLK_SOUND
+                204   		mov c, MY_MISO_SOUND
+                205   		clr MY_SCLK_SOUND
+                206   		mov acc.0, c
+                207   	ENDMAC
+0494            208            
+0494            209                ; Send/Receive bit 7
+0494 33         209                    rlc a
+0495 92A4       209                    mov MY_MOSI_SOUND, c
+0497 D2A0       209                    setb MY_SCLK_SOUND
+0499 A2A1       209                    mov c, MY_MISO_SOUND
+049B C2A0       209                    clr MY_SCLK_SOUND
+049D 92E0       209                    mov acc.0, c
+049F            210                ; Send/Receive bit 6
+049F 33         210                    rlc a
+04A0 92A4       210                    mov MY_MOSI_SOUND, c
+04A2 D2A0       210                    setb MY_SCLK_SOUND
+04A4 A2A1       210                    mov c, MY_MISO_SOUND
+04A6 C2A0       210                    clr MY_SCLK_SOUND
+04A8 92E0       210                    mov acc.0, c
+04AA            211                ; Send/Receive bit 5
+04AA 33         211                    rlc a
+04AB 92A4       211                    mov MY_MOSI_SOUND, c
+04AD D2A0       211                    setb MY_SCLK_SOUND
+04AF A2A1       211                    mov c, MY_MISO_SOUND
+04B1 C2A0       211                    clr MY_SCLK_SOUND
+04B3 92E0       211                    mov acc.0, c
+04B5            212                ; Send/Receive bit 4
+04B5 33         212                    rlc a
+04B6 92A4       212                    mov MY_MOSI_SOUND, c
+04B8 D2A0       212                    setb MY_SCLK_SOUND
+04BA A2A1       212                    mov c, MY_MISO_SOUND
+04BC C2A0       212                    clr MY_SCLK_SOUND
+04BE 92E0       212                    mov acc.0, c
+04C0            213                ; Send/Receive bit 3
+04C0 33         213                    rlc a
+04C1 92A4       213                    mov MY_MOSI_SOUND, c
+04C3 D2A0       213                    setb MY_SCLK_SOUND
+04C5 A2A1       213                    mov c, MY_MISO_SOUND
+04C7 C2A0       213                    clr MY_SCLK_SOUND
+04C9 92E0       213                    mov acc.0, c
+04CB            214                ; Send/Receive bit 2
+04CB 33         214                    rlc a
+04CC 92A4       214                    mov MY_MOSI_SOUND, c
+04CE D2A0       214                    setb MY_SCLK_SOUND
+04D0 A2A1       214                    mov c, MY_MISO_SOUND
+04D2 C2A0       214                    clr MY_SCLK_SOUND
+04D4 92E0       214                    mov acc.0, c
+04D6            215                ; Send/Receive bit 1
+04D6 33         215                    rlc a
+04D7 92A4       215                    mov MY_MOSI_SOUND, c
+04D9 D2A0       215                    setb MY_SCLK_SOUND
+04DB A2A1       215                    mov c, MY_MISO_SOUND
+04DD C2A0       215                    clr MY_SCLK_SOUND
+04DF 92E0       215                    mov acc.0, c
+04E1            216                ; Send/Receive bit 0
+04E1 33         216                    rlc a
+04E2 92A4       216                    mov MY_MOSI_SOUND, c
+04E4 D2A0       216                    setb MY_SCLK_SOUND
+04E6 A2A1       216                    mov c, MY_MISO_SOUND
+04E8 C2A0       216                    clr MY_SCLK_SOUND
+04EA 92E0       216                    mov acc.0, c
+04EC            217   
+04EC 22         218   ret
+04ED            219   
+                220   Change_8bit_Variable MAC
+                221       jb %0, %2
+                222       Wait_Milli_Seconds(#50) ; de-bounce
+                223       jb %0, %2
+                224       jnb %0, $
+                225       jb SHIFT_BUTTON, skip%Mb
+                226       dec %1
+                227       sjmp skip%Ma
+                228       skip%Mb:
+                229       inc %1
+                230       skip%Ma:
+                231   ENDMAC
+04ED            232   
+04ED            233   ;Change_8bit_Variable(MY_VARIABLE_BUTTON, my_variable, loop_c)
+04ED            234   ;    Set_Cursor(2, 14)
+04ED            235   ;    mov a, my_variable
+04ED            236   ;    lcall SendToLCD
+04ED            237   ;lcall Save_Configuration
+04ED            238   
+04ED            239   ;-------------------------------------------------------------------------------------------------------------------------------
+04ED            240   ;***FXNS For Serial Port
+04ED            241   
+04ED            242   ; Configure the serial port and baud rate
+04ED            243   InitSerialPort:
+04ED            244       ; Since the reset button bounces, we need to wait a bit before
+04ED            245       ; sending messages, otherwise we risk displaying gibberish!
+04ED 79DE       246       mov R1, #222
+04EF 78A6       247       mov R0, #166
+04F1 D8FE       248       djnz R0, $   ; 3 cycles->3*45.21123ns*166=22.51519us
+04F3 D9FA       249       djnz R1, $-4 ; 22.51519us*222=4.998ms
+04F5            250       ; Now we can proceed with the configuration
+04F5 438780     251            orl     PCON,#0x80
+04F8 759852     252            mov     SCON,#0x52
+04FB 759B00     253            mov     BDRCON,#0x00
+04FE 759AF4     254            mov     BRL,#BRG_VAL
+0501 759B1E     255            mov     BDRCON,#0x1E ; BDRCON=BRR|TBCK|RBCK|SPD;
+0504 22         256   ret
+0505            257   
+0505            258   
+0505            259   putchar:
+0505 3099FD     260       jnb TI, putchar
+0508 C299       261       clr TI
+050A F599       262       mov SBUF, a
+050C 22         263   ret
+050D            264   
+050D            265   ;-------------------------------------------------------------------------------------------------------------------------------
+050D            266   ;***FXNS to CHECK BUTTONS
+050D            267   
+050D            268   CHECK_STIME:
+050D            269   
+050D 208218     270       jb STIME_BUTTON, CHECK_STIME_END
+0510 C002       270            push AR2
+0512 7A32       270            mov R2, #50
+0514 120039     270            lcall ?Wait_Milli_Seconds
+0517 D002       270            pop AR2 ; de-bounce
+0519 20820C     270       jb STIME_BUTTON, CHECK_STIME_END
+051C 3082FD     270       jnb STIME_BUTTON, $
+051F 208404     270       jb SHIFT_BUTTON, skip16b
+0522 1535       270       dec Time_soak
+0524 8002       270       sjmp skip16a
+0526            270       skip16b:
+0526 0535       270       inc Time_soak
+0528            270       skip16a:
+0528            271            
+0528            272   CHECK_STIME_END:
+0528 22         273   ret
+0529            274   
+0529            275   CHECK_STEMP:
+0529 208318     276       jb STEMP_BUTTON, CHECK_STEMP_END
+052C C002       276            push AR2
+052E 7A32       276            mov R2, #50
+0530 120039     276            lcall ?Wait_Milli_Seconds
+0533 D002       276            pop AR2 ; de-bounce
+0535 20830C     276       jb STEMP_BUTTON, CHECK_STEMP_END
+0538 3083FD     276       jnb STEMP_BUTTON, $
+053B 208404     276       jb SHIFT_BUTTON, skip18b
+053E 1534       276       dec Temp_soak
+0540 8002       276       sjmp skip18a
+0542            276       skip18b:
+0542 0534       276       inc Temp_soak
+0544            276       skip18a:
+0544            277       ;lcall Save_Configuration
+0544            278            
+0544            279   CHECK_STEMP_END:
+0544 22         280   ret
+0545            281   
+0545            282   CHECK_RTIME:
+0545 208418     283       jb RTIME_BUTTON, CHECK_RTIME_END
+0548 C002       283            push AR2
+054A 7A32       283            mov R2, #50
+054C 120039     283            lcall ?Wait_Milli_Seconds
+054F D002       283            pop AR2 ; de-bounce
+0551 20840C     283       jb RTIME_BUTTON, CHECK_RTIME_END
+0554 3084FD     283       jnb RTIME_BUTTON, $
+0557 208404     283       jb SHIFT_BUTTON, skip20b
+055A 1537       283       dec Time_refl
+055C 8002       283       sjmp skip20a
+055E            283       skip20b:
+055E 0537       283       inc Time_refl
+0560            283       skip20a:
+0560            284   CHECK_RTIME_END:
+0560 22         285   ret
+0561            286   
+0561            287   CHECK_RTEMP:
+0561 208618     288       jb RTEMP_BUTTON, CHECK_RTEMP_END
+0564 C002       288            push AR2
+0566 7A32       288            mov R2, #50
+0568 120039     288            lcall ?Wait_Milli_Seconds
+056B D002       288            pop AR2 ; de-bounce
+056D 20860C     288       jb RTEMP_BUTTON, CHECK_RTEMP_END
+0570 3086FD     288       jnb RTEMP_BUTTON, $
+0573 208404     288       jb SHIFT_BUTTON, skip22b
+0576 1536       288       dec Temp_refl
+0578 8002       288       sjmp skip22a
+057A            288       skip22b:
+057A 0536       288       inc Temp_refl
+057C            288       skip22a:
+057C            289   CHECK_RTEMP_END:
+057C 22         290   ret
+057D            291   
+057D            292   CHECK_POWER:
+057D            293   
+057D 20C518     294       jb POWER_BUTTON, CHECK_POWER_END ; if button not pressed, stop checking
+0580 C002       295            push AR2
+0582 7A32       295            mov R2, #50
+0584 120039     295            lcall ?Wait_Milli_Seconds
+0587 D002       295            pop AR2 ; debounce time
+0589 20C50C     296            jb POWER_BUTTON, CHECK_POWER_END ; if button not pressed, stop checking
+058C 30C5FD     297            jnb POWER_BUTTON, $ ; loop while the button is pressed
+058F 754F00     298       mov pwm_ratio+0, #low(0)
+0592 755000     299            mov pwm_ratio+1, #high(0)
+0595 120F43     300       lcall OFF_STATE
+0598            301   
+0598            302   CHECK_POWER_END:
+0598 22         303   ret
+0599            304   
+0599            305   CHECK_K_OR_C:
+0599            306   
+0599 20860F     307       jb RTEMP_BUTTON, CHECK_K_OR_C_END ; if button not pressed, stop checking
+059C C002       308            push AR2
+059E 7A32       308            mov R2, #50
+05A0 120039     308            lcall ?Wait_Milli_Seconds
+05A3 D002       308            pop AR2 ; debounce time
+05A5 208603     309            jb RTEMP_BUTTON, CHECK_K_OR_C_END ; if button not pressed, stop checking
+05A8 3086FD     310            jnb RTEMP_BUTTON, $ ; loop while the button is pressed
+05AB            311       
+05AB            312       ;mov a, K_or_C
+05AB            313       ;anl a,
+05AB            314       ;anl a, #00000001B  ; We need only the two least significant bits
+05AB            315   
+05AB            316   
+05AB            317   
+05AB            318   
+05AB            319   CHECK_K_OR_C_END:
+05AB 22         320   ret
+05AC            321   
+05AC            322   ; Playback MACRO for sound --------------------------------------------------
+05AC            323   
+                324   PLAYBACK_TEMP MAC
+                325       ; ***play audio***
+                326       clr TR1 ; Stop Timer 1 ISR from playing previous request
+                327       setb FLASH_CE
+                328       clr SPEAKER ; Turn off speaker
+                329       
+                330       clr FLASH_CE ; Enable SPI Flash
+                331       mov a, #READ_BYTES
+                332       lcall Send_SPI
+                333       ; Set the initial position in memory where to start playing
+                334       
+                335       mov a, %0 ; change initial position
+                336       lcall Send_SPI
+                337       mov a, %1 ; next memory position
+                338       lcall Send_SPI
+                339       mov a, %2 ; next memory position
+                340       lcall Send_SPI
+                341       mov a, %0 ; request first byte to send to DAC
+                342       lcall Send_SPI
+                343       
+                344       ; How many bytes to play?
+                345       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+                346       mov w+1, %3 ; Load the middle byte of the number of bytes to play
+                347       mov w+0, %4 ; Load the low byte of the number of bytes to play
+                348       
+                349       
+                350       setb SPEAKER ;Turn on speaker
+                351       setb TR1 ;Start playback by enabling Timer1
+                352   ENDMAC
+05AC            353   
+05AC            354   
+05AC            355   
+05AC            356   ;**SOUND STUFF---------------------------------------------------------------
+05AC            357   
+05AC            358   SOUND_FSM:
+05AC            359   state_0_sound:
+05AC            360   ;check if 5 seconds has passed, if yes go to state 1, if no exit function 
+05AC 300105     361       jnb five_seconds_flag, Sound_ret
+05AF C201       362       clr five_seconds_flag
+05B1 0205B5     363       ljmp state_1_sound
+05B4            364   Sound_ret:
+05B4 22         365       ret
+05B5            366   
+05B5            367   state_1_sound:
+05B5            368   ; check if temp is greater than 100, if yes go to state 2
+05B5            369   ; check if temp is less than 100, if yes go to state 4
+05B5 E53B       370       mov a, Temp_oven
+05B7 9464       371       subb a, #100
+05B9 5002       372       jnc state_2_sound_hop
+05BB 4003       373       jc state_4_sound_hop
+05BD            374   
+05BD            375       state_2_sound_hop:
+05BD 0205C3     376           ljmp state_2_sound
+05C0            377   
+05C0            378       state_4_sound_hop:
+05C0 0206A4     379           ljmp state_4_sound
+05C3            380   
+05C3            381   state_2_sound:
+05C3            382   ;divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
+05C3            383   ; go to state_3_sound
+05C3 75F064     384       mov b, #100
+05C6 E53B       385       mov a, Temp_oven
+05C8 84         386       div ab
+05C9 9401       387       subb a, #1
+05CB 600A       388       jz play_sound_1
+05CD            389   
+05CD 75F064     390       mov b, #100
+05D0 E53B       391       mov a, Temp_oven
+05D2 84         392       div ab
+05D3 9402       393       subb a, #2
+05D5 605F       394       jz play_sound_2
+05D7            395      
+05D7            396       play_sound_1: 
+05D7            397       ; ***play audio***
+05D7 C28E       397       clr TR1 ; Stop Timer 1 ISR from playing previous request
+05D9 D2A5       397       setb FLASH_CE
+05DB C2A6       397       clr SPEAKER ; Turn off speaker
+05DD            397       
+05DD C2A5       397       clr FLASH_CE ; Enable SPI Flash
+05DF 7403       397       mov a, #READ_BYTES
+05E1 120494     397       lcall Send_SPI
+05E4            397       ; Set the initial position in memory where to start playing
+05E4            397       
+05E4 7401       397       mov a, #0x01 ; change initial position
+05E6 120494     397       lcall Send_SPI
+05E9 7493       397       mov a, #0x93 ; next memory position
+05EB 120494     397       lcall Send_SPI
+05EE 7484       397       mov a, #0x84 ; next memory position
+05F0 120494     397       lcall Send_SPI
+05F3 7401       397       mov a, #0x01 ; request first byte to send to DAC
+05F5 120494     397       lcall Send_SPI
+05F8            397       
+05F8            397       ; How many bytes to play?
+05F8 754E00     397       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+05FB 754D36     397       mov w+1, #0x36 ; Load the middle byte of the number of bytes to play
+05FE 754CB0     397       mov w+0, #0xb0 ; Load the low byte of the number of bytes to play
+0601            397       
+0601            397       
+0601 D2A6       397       setb SPEAKER ;Turn on speaker
+0603 D28E       397       setb TR1 ;Start playback by enabling Timer1 ;one
+0605            398       ; ***play audio***
+0605 C28E       398       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0607 D2A5       398       setb FLASH_CE
+0609 C2A6       398       clr SPEAKER ; Turn off speaker
+060B            398       
+060B C2A5       398       clr FLASH_CE ; Enable SPI Flash
+060D 7403       398       mov a, #READ_BYTES
+060F 120494     398       lcall Send_SPI
+0612            398       ; Set the initial position in memory where to start playing
+0612            398       
+0612 7405       398       mov a, #0x05 ; change initial position
+0614 120494     398       lcall Send_SPI
+0617 7409       398       mov a, #0x09 ; next memory position
+0619 120494     398       lcall Send_SPI
+061C 7410       398       mov a, #0x10 ; next memory position
+061E 120494     398       lcall Send_SPI
+0621 7405       398       mov a, #0x05 ; request first byte to send to DAC
+0623 120494     398       lcall Send_SPI
+0626            398       
+0626            398       ; How many bytes to play?
+0626 754E00     398       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0629 754D27     398       mov w+1, #0x27 ; Load the middle byte of the number of bytes to play
+062C 754C10     398       mov w+0, #0x10 ; Load the low byte of the number of bytes to play
+062F            398       
+062F            398       
+062F D2A6       398       setb SPEAKER ;Turn on speaker
+0631 D28E       398       setb TR1 ;Start playback by enabling Timer1 ;hundred
+0633 020695     399           ljmp state_3_sound
+0636            400   
+0636            401       play_sound_2:
+0636            402       ; ***play audio***
+0636 C28E       402       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0638 D2A5       402       setb FLASH_CE
+063A C2A6       402       clr SPEAKER ; Turn off speaker
+063C            402       
+063C C2A5       402       clr FLASH_CE ; Enable SPI Flash
+063E 7403       402       mov a, #READ_BYTES
+0640 120494     402       lcall Send_SPI
+0643            402       ; Set the initial position in memory where to start playing
+0643            402       
+0643 7401       402       mov a, #0x01 ; change initial position
+0645 120494     402       lcall Send_SPI
+0648 74C7       402       mov a, #0xc7 ; next memory position
+064A 120494     402       lcall Send_SPI
+064D 7414       402       mov a, #0x14 ; next memory position
+064F 120494     402       lcall Send_SPI
+0652 7401       402       mov a, #0x01 ; request first byte to send to DAC
+0654 120494     402       lcall Send_SPI
+0657            402       
+0657            402       ; How many bytes to play?
+0657 754E00     402       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+065A 754D13     402       mov w+1, #0x13 ; Load the middle byte of the number of bytes to play
+065D 754C88     402       mov w+0, #0x88 ; Load the low byte of the number of bytes to play
+0660            402       
+0660            402       
+0660 D2A6       402       setb SPEAKER ;Turn on speaker
+0662 D28E       402       setb TR1 ;Start playback by enabling Timer1 ;two
+0664            403       ; ***play audio***
+0664 C28E       403       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0666 D2A5       403       setb FLASH_CE
+0668 C2A6       403       clr SPEAKER ; Turn off speaker
+066A            403       
+066A C2A5       403       clr FLASH_CE ; Enable SPI Flash
+066C 7403       403       mov a, #READ_BYTES
+066E 120494     403       lcall Send_SPI
+0671            403       ; Set the initial position in memory where to start playing
+0671            403       
+0671 7405       403       mov a, #0x05 ; change initial position
+0673 120494     403       lcall Send_SPI
+0676 7409       403       mov a, #0x09 ; next memory position
+0678 120494     403       lcall Send_SPI
+067B 7410       403       mov a, #0x10 ; next memory position
+067D 120494     403       lcall Send_SPI
+0680 7405       403       mov a, #0x05 ; request first byte to send to DAC
+0682 120494     403       lcall Send_SPI
+0685            403       
+0685            403       ; How many bytes to play?
+0685 754E00     403       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0688 754D27     403       mov w+1, #0x27 ; Load the middle byte of the number of bytes to play
+068B 754C10     403       mov w+0, #0x10 ; Load the low byte of the number of bytes to play
+068E            403       
+068E            403       
+068E D2A6       403       setb SPEAKER ;Turn on speaker
+0690 D28E       403       setb TR1 ;Start playback by enabling Timer1 ;hundred
+0692 020695     404           ljmp state_3_sound
+0695            405   
+0695            406   
+0695            407   
+0695            408       
+0695            409   
+0695            410   
+0695            411   state_3_sound:
+0695            412   ; check remainder of temp, if it is 0, go back to state_0_sound
+0695            413   ; if not 0, go to state_4_sound
+0695            414   
+0695 75F064     415       mov b, #100
+0698 E53B       416       mov a, Temp_oven
+069A 84         417       div ab
+069B E5F0       418       mov a, b
+069D 6002       419       jz state_0_sound_hop
+069F 7003       420       jnz state_4_sound
+06A1            421   
+06A1            422       state_0_sound_hop:
+06A1 0205AC     423           ljmp state_0_sound
+06A4            424   
+06A4            425   state_4_sound:
+06A4            426   ; if T % 100 greater or equal to 20, go to state_5_sound,
+06A4 75F064     427       mov b, #100
+06A7 E53B       428       mov a, Temp_oven
+06A9 84         429       div ab
+06AA E5F0       430       mov a, b 
+06AC 9414       431       subb a, #20
+06AE 5014       432       jnc state_5_sound
+06B0 E4         433       clr a
+06B1            434   ; if T % 100 is less than 10, go to state_6_sound
+06B1 75F064     435       mov b, #100
+06B4 E53B       436       mov a, Temp_oven
+06B6 84         437       div ab
+06B7 E5F0       438       mov a, b
+06B9 940A       439       subb a, #10
+06BB 4004       440       jc state_6_sound_hop0
+06BD E4         441       clr a
+06BE            442   ; if T % 100 is greater than 10 and less than 20, go to state_7_sound
+06BE 020A47     443       ljmp state_7_sound
+06C1            444   
+06C1            445       state_6_sound_hop0:
+06C1 020876     446           ljmp state_6_sound
+06C4            447       
+06C4            448   
+06C4            449   state_5_sound:
+06C4            450   ; play number from 20 to 90 in decades (20, 30, 40, 50, 60, 70, 80, 90), based off remainder from temp divided by 100
+06C4            451   ; if (T % 100) % 10 is not equal to 0, go to state_6_sound
+06C4            452   ; if (T % 100) % 10 is equal to 0, go to state_8_sound
+06C4            453   
+06C4 E53B       454       mov a, Temp_oven
+06C6 75F064     455       mov b, #100 
+06C9 84         456       div ab
+06CA E5F0       457       mov a, b
+06CC 75F00A     458       mov b, #10
+06CF 84         459       div ab
+06D0 E5F0       460       mov a, b
+06D2 6005       461       jz play_sound
+06D4 7000       462       jnz state_6_sound_hop1
+06D6            463   
+06D6            464       state_6_sound_hop1:
+06D6 020876     465           ljmp state_6_sound
+06D9            466       
+06D9            467   
+06D9            468       play_sound:
+06D9            469           ;ljmp PLAYBACK_TEMP
+06D9 B41431     470           cjne a, #0x14, play_30   
+06DC            471   
+06DC            472       ; ***play audio***
+06DC C28E       472       clr TR1 ; Stop Timer 1 ISR from playing previous request
+06DE D2A5       472       setb FLASH_CE
+06E0 C2A6       472       clr SPEAKER ; Turn off speaker
+06E2            472       
+06E2 C2A5       472       clr FLASH_CE ; Enable SPI Flash
+06E4 7403       472       mov a, #READ_BYTES
+06E6 120494     472       lcall Send_SPI
+06E9            472       ; Set the initial position in memory where to start playing
+06E9            472       
+06E9 7403       472       mov a, #0x03 ; change initial position
+06EB 120494     472       lcall Send_SPI
+06EE 74EF       472       mov a, #0xef ; next memory position
+06F0 120494     472       lcall Send_SPI
+06F3 74D0       472       mov a, #0xd0 ; next memory position
+06F5 120494     472       lcall Send_SPI
+06F8 7403       472       mov a, #0x03 ; request first byte to send to DAC
+06FA 120494     472       lcall Send_SPI
+06FD            472       
+06FD            472       ; How many bytes to play?
+06FD 754E00     472       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0700 754D27     472       mov w+1, #0x27 ; Load the middle byte of the number of bytes to play
+0703 754C10     472       mov w+0, #0x10 ; Load the low byte of the number of bytes to play
+0706            472       
+0706            472       
+0706 D2A6       472       setb SPEAKER ;Turn on speaker
+0708 D28E       472       setb TR1 ;Start playback by enabling Timer1
+070A 020873     473           ljmp state_8_hop0
+070D            474   
+070D            475           play_30:
+070D B41E31     476               cjne a, #0x1e, play_40
+0710            477       ; ***play audio***
+0710 C28E       477       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0712 D2A5       477       setb FLASH_CE
+0714 C2A6       477       clr SPEAKER ; Turn off speaker
+0716            477       
+0716 C2A5       477       clr FLASH_CE ; Enable SPI Flash
+0718 7403       477       mov a, #READ_BYTES
+071A 120494     477       lcall Send_SPI
+071D            477       ; Set the initial position in memory where to start playing
+071D            477       
+071D 7404       477       mov a, #0x04 ; change initial position
+071F 120494     477       lcall Send_SPI
+0722 7416       477       mov a, #0x16 ; next memory position
+0724 120494     477       lcall Send_SPI
+0727 74E0       477       mov a, #0xe0 ; next memory position
+0729 120494     477       lcall Send_SPI
+072C 7404       477       mov a, #0x04 ; request first byte to send to DAC
+072E 120494     477       lcall Send_SPI
+0731            477       
+0731            477       ; How many bytes to play?
+0731 754E00     477       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0734 754D23     477       mov w+1, #0x23 ; Load the middle byte of the number of bytes to play
+0737 754C28     477       mov w+0, #0x28 ; Load the low byte of the number of bytes to play
+073A            477       
+073A            477       
+073A D2A6       477       setb SPEAKER ;Turn on speaker
+073C D28E       477       setb TR1 ;Start playback by enabling Timer1
+073E 020873     478               ljmp state_8_hop0
+0741            479   
+0741            480           play_40:
+0741 B42831     481               cjne a, #0x28, play_50
+0744            482       ; ***play audio***
+0744 C28E       482       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0746 D2A5       482       setb FLASH_CE
+0748 C2A6       482       clr SPEAKER ; Turn off speaker
+074A            482       
+074A C2A5       482       clr FLASH_CE ; Enable SPI Flash
+074C 7403       482       mov a, #READ_BYTES
+074E 120494     482       lcall Send_SPI
+0751            482       ; Set the initial position in memory where to start playing
+0751            482       
+0751 7404       482       mov a, #0x04 ; change initial position
+0753 120494     482       lcall Send_SPI
+0756 743D       482       mov a, #0x3d ; next memory position
+0758 120494     482       lcall Send_SPI
+075B 74F0       482       mov a, #0xf0 ; next memory position
+075D 120494     482       lcall Send_SPI
+0760 7404       482       mov a, #0x04 ; request first byte to send to DAC
+0762 120494     482       lcall Send_SPI
+0765            482       
+0765            482       ; How many bytes to play?
+0765 754E00     482       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0768 754D1F     482       mov w+1, #0x1f ; Load the middle byte of the number of bytes to play
+076B 754C40     482       mov w+0, #0x40 ; Load the low byte of the number of bytes to play
+076E            482       
+076E            482       
+076E D2A6       482       setb SPEAKER ;Turn on speaker
+0770 D28E       482       setb TR1 ;Start playback by enabling Timer1
+0772 020873     483               ljmp state_8_hop0
+0775            484   
+0775            485           play_50:
+0775 B43231     486               cjne a, #0x32, play_60
+0778            487       ; ***play audio***
+0778 C28E       487       clr TR1 ; Stop Timer 1 ISR from playing previous request
+077A D2A5       487       setb FLASH_CE
+077C C2A6       487       clr SPEAKER ; Turn off speaker
+077E            487       
+077E C2A5       487       clr FLASH_CE ; Enable SPI Flash
+0780 7403       487       mov a, #READ_BYTES
+0782 120494     487       lcall Send_SPI
+0785            487       ; Set the initial position in memory where to start playing
+0785            487       
+0785 7404       487       mov a, #0x04 ; change initial position
+0787 120494     487       lcall Send_SPI
+078A 7451       487       mov a, #0x51 ; next memory position
+078C 120494     487       lcall Send_SPI
+078F 7478       487       mov a, #0x78 ; next memory position
+0791 120494     487       lcall Send_SPI
+0794 7404       487       mov a, #0x04 ; request first byte to send to DAC
+0796 120494     487       lcall Send_SPI
+0799            487       
+0799            487       ; How many bytes to play?
+0799 754E00     487       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+079C 754D23     487       mov w+1, #0x23 ; Load the middle byte of the number of bytes to play
+079F 754C28     487       mov w+0, #0x28 ; Load the low byte of the number of bytes to play
+07A2            487       
+07A2            487       
+07A2 D2A6       487       setb SPEAKER ;Turn on speaker
+07A4 D28E       487       setb TR1 ;Start playback by enabling Timer1
+07A6 020873     488               ljmp state_8_hop0
+07A9            489   
+07A9            490           play_60:
+07A9 B43C31     491               cjne a, #0x3c, play_70
+07AC            492       ; ***play audio***
+07AC C28E       492       clr TR1 ; Stop Timer 1 ISR from playing previous request
+07AE D2A5       492       setb FLASH_CE
+07B0 C2A6       492       clr SPEAKER ; Turn off speaker
+07B2            492       
+07B2 C2A5       492       clr FLASH_CE ; Enable SPI Flash
+07B4 7403       492       mov a, #READ_BYTES
+07B6 120494     492       lcall Send_SPI
+07B9            492       ; Set the initial position in memory where to start playing
+07B9            492       
+07B9 7404       492       mov a, #0x04 ; change initial position
+07BB 120494     492       lcall Send_SPI
+07BE 7474       492       mov a, #0x74 ; next memory position
+07C0 120494     492       lcall Send_SPI
+07C3 74A0       492       mov a, #0xa0 ; next memory position
+07C5 120494     492       lcall Send_SPI
+07C8 7404       492       mov a, #0x04 ; request first byte to send to DAC
+07CA 120494     492       lcall Send_SPI
+07CD            492       
+07CD            492       ; How many bytes to play?
+07CD 754E00     492       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+07D0 754D27     492       mov w+1, #0x27 ; Load the middle byte of the number of bytes to play
+07D3 754C10     492       mov w+0, #0x10 ; Load the low byte of the number of bytes to play
+07D6            492       
+07D6            492       
+07D6 D2A6       492       setb SPEAKER ;Turn on speaker
+07D8 D28E       492       setb TR1 ;Start playback by enabling Timer1
+07DA 020873     493               ljmp state_8_hop0
+07DD            494   
+07DD            495           play_70:
+07DD B44631     496               cjne a, #0x46, play_80
+07E0            497       ; ***play audio***
+07E0 C28E       497       clr TR1 ; Stop Timer 1 ISR from playing previous request
+07E2 D2A5       497       setb FLASH_CE
+07E4 C2A6       497       clr SPEAKER ; Turn off speaker
+07E6            497       
+07E6 C2A5       497       clr FLASH_CE ; Enable SPI Flash
+07E8 7403       497       mov a, #READ_BYTES
+07EA 120494     497       lcall Send_SPI
+07ED            497       ; Set the initial position in memory where to start playing
+07ED            497       
+07ED 7404       497       mov a, #0x04 ; change initial position
+07EF 120494     497       lcall Send_SPI
+07F2 749B       497       mov a, #0x9b ; next memory position
+07F4 120494     497       lcall Send_SPI
+07F7 74B0       497       mov a, #0xb0 ; next memory position
+07F9 120494     497       lcall Send_SPI
+07FC 7404       497       mov a, #0x04 ; request first byte to send to DAC
+07FE 120494     497       lcall Send_SPI
+0801            497       
+0801            497       ; How many bytes to play?
+0801 754E00     497       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0804 754D32     497       mov w+1, #0x32 ; Load the middle byte of the number of bytes to play
+0807 754CC8     497       mov w+0, #0xc8 ; Load the low byte of the number of bytes to play
+080A            497       
+080A            497       
+080A D2A6       497       setb SPEAKER ;Turn on speaker
+080C D28E       497       setb TR1 ;Start playback by enabling Timer1
+080E 020873     498               ljmp state_8_hop0
+0811            499   
+0811            500           play_80:
+0811 B45031     501               cjne a, #0x50, play_90
+0814            502       ; ***play audio***
+0814 C28E       502       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0816 D2A5       502       setb FLASH_CE
+0818 C2A6       502       clr SPEAKER ; Turn off speaker
+081A            502       
+081A C2A5       502       clr FLASH_CE ; Enable SPI Flash
+081C 7403       502       mov a, #READ_BYTES
+081E 120494     502       lcall Send_SPI
+0821            502       ; Set the initial position in memory where to start playing
+0821            502       
+0821 7404       502       mov a, #0x04 ; change initial position
+0823 120494     502       lcall Send_SPI
+0826 74C6       502       mov a, #0xc6 ; next memory position
+0828 120494     502       lcall Send_SPI
+082B 74A8       502       mov a, #0xa8 ; next memory position
+082D 120494     502       lcall Send_SPI
+0830 7404       502       mov a, #0x04 ; request first byte to send to DAC
+0832 120494     502       lcall Send_SPI
+0835            502       
+0835            502       ; How many bytes to play?
+0835 754E00     502       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0838 754D23     502       mov w+1, #0x23 ; Load the middle byte of the number of bytes to play
+083B 754C28     502       mov w+0, #0x28 ; Load the low byte of the number of bytes to play
+083E            502       
+083E            502       
+083E D2A6       502       setb SPEAKER ;Turn on speaker
+0840 D28E       502       setb TR1 ;Start playback by enabling Timer1
+0842 020873     503               ljmp state_8_hop0
+0845            504   
+0845            505           play_90:
+0845            506       ; ***play audio***
+0845 C28E       506       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0847 D2A5       506       setb FLASH_CE
+0849 C2A6       506       clr SPEAKER ; Turn off speaker
+084B            506       
+084B C2A5       506       clr FLASH_CE ; Enable SPI Flash
+084D 7403       506       mov a, #READ_BYTES
+084F 120494     506       lcall Send_SPI
+0852            506       ; Set the initial position in memory where to start playing
+0852            506       
+0852 7404       506       mov a, #0x04 ; change initial position
+0854 120494     506       lcall Send_SPI
+0857 74ED       506       mov a, #0xed ; next memory position
+0859 120494     506       lcall Send_SPI
+085C 74B8       506       mov a, #0xb8 ; next memory position
+085E 120494     506       lcall Send_SPI
+0861 7404       506       mov a, #0x04 ; request first byte to send to DAC
+0863 120494     506       lcall Send_SPI
+0866            506       
+0866            506       ; How many bytes to play?
+0866 754E00     506       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0869 754D1F     506       mov w+1, #0x1f ; Load the middle byte of the number of bytes to play
+086C 754C40     506       mov w+0, #0x40 ; Load the low byte of the number of bytes to play
+086F            506       
+086F            506       
+086F D2A6       506       setb SPEAKER ;Turn on speaker
+0871 D28E       506       setb TR1 ;Start playback by enabling Timer1
+0873            507   
+0873            508           state_8_hop0:
+0873 020C4C     509               ljmp state_8_sound
+0876            510   
+0876            511   
+0876            512   state_6_sound:
+0876            513   ; play 1 - 9
+0876            514       ;ljmp PLAYBACK_TEMP
+0876 B40131     515       cjne a, #0x01, play_2
+0879            516   
+0879            517       ; ***play audio***
+0879 C28E       517       clr TR1 ; Stop Timer 1 ISR from playing previous request
+087B D2A5       517       setb FLASH_CE
+087D C2A6       517       clr SPEAKER ; Turn off speaker
+087F            517       
+087F C2A5       517       clr FLASH_CE ; Enable SPI Flash
+0881 7403       517       mov a, #READ_BYTES
+0883 120494     517       lcall Send_SPI
+0886            517       ; Set the initial position in memory where to start playing
+0886            517       
+0886 7401       517       mov a, #0x01 ; change initial position
+0888 120494     517       lcall Send_SPI
+088B 7493       517       mov a, #0x93 ; next memory position
+088D 120494     517       lcall Send_SPI
+0890 7484       517       mov a, #0x84 ; next memory position
+0892 120494     517       lcall Send_SPI
+0895 7401       517       mov a, #0x01 ; request first byte to send to DAC
+0897 120494     517       lcall Send_SPI
+089A            517       
+089A            517       ; How many bytes to play?
+089A 754E00     517       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+089D 754D36     517       mov w+1, #0x36 ; Load the middle byte of the number of bytes to play
+08A0 754CB0     517       mov w+0, #0xb0 ; Load the low byte of the number of bytes to play
+08A3            517       
+08A3            517       
+08A3 D2A6       517       setb SPEAKER ;Turn on speaker
+08A5 D28E       517       setb TR1 ;Start playback by enabling Timer1
+08A7 020A44     518       ljmp state_8_hop1
+08AA            519   
+08AA            520       play_2:
+08AA B40231     521           cjne a, #0x02, play_3
+08AD            522       ; ***play audio***
+08AD C28E       522       clr TR1 ; Stop Timer 1 ISR from playing previous request
+08AF D2A5       522       setb FLASH_CE
+08B1 C2A6       522       clr SPEAKER ; Turn off speaker
+08B3            522       
+08B3 C2A5       522       clr FLASH_CE ; Enable SPI Flash
+08B5 7403       522       mov a, #READ_BYTES
+08B7 120494     522       lcall Send_SPI
+08BA            522       ; Set the initial position in memory where to start playing
+08BA            522       
+08BA 7401       522       mov a, #0x01 ; change initial position
+08BC 120494     522       lcall Send_SPI
+08BF 74C7       522       mov a, #0xc7 ; next memory position
+08C1 120494     522       lcall Send_SPI
+08C4 7414       522       mov a, #0x14 ; next memory position
+08C6 120494     522       lcall Send_SPI
+08C9 7401       522       mov a, #0x01 ; request first byte to send to DAC
+08CB 120494     522       lcall Send_SPI
+08CE            522       
+08CE            522       ; How many bytes to play?
+08CE 754E00     522       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+08D1 754D13     522       mov w+1, #0x13 ; Load the middle byte of the number of bytes to play
+08D4 754C88     522       mov w+0, #0x88 ; Load the low byte of the number of bytes to play
+08D7            522       
+08D7            522       
+08D7 D2A6       522       setb SPEAKER ;Turn on speaker
+08D9 D28E       522       setb TR1 ;Start playback by enabling Timer1
+08DB 020A44     523           ljmp state_8_hop1
+08DE            524   
+08DE            525       play_3:
+08DE B40331     526           cjne a, #0x03, play_4
+08E1            527       ; ***play audio***
+08E1 C28E       527       clr TR1 ; Stop Timer 1 ISR from playing previous request
+08E3 D2A5       527       setb FLASH_CE
+08E5 C2A6       527       clr SPEAKER ; Turn off speaker
+08E7            527       
+08E7 C2A5       527       clr FLASH_CE ; Enable SPI Flash
+08E9 7403       527       mov a, #READ_BYTES
+08EB 120494     527       lcall Send_SPI
+08EE            527       ; Set the initial position in memory where to start playing
+08EE            527       
+08EE 7401       527       mov a, #0x01 ; change initial position
+08F0 120494     527       lcall Send_SPI
+08F3 74D6       527       mov a, #0xd6 ; next memory position
+08F5 120494     527       lcall Send_SPI
+08F8 7468       527       mov a, #0x68 ; next memory position
+08FA 120494     527       lcall Send_SPI
+08FD 7401       527       mov a, #0x01 ; request first byte to send to DAC
+08FF 120494     527       lcall Send_SPI
+0902            527       
+0902            527       ; How many bytes to play?
+0902 754E00     527       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0905 754D23     527       mov w+1, #0x23 ; Load the middle byte of the number of bytes to play
+0908 754C28     527       mov w+0, #0x28 ; Load the low byte of the number of bytes to play
+090B            527       
+090B            527       
+090B D2A6       527       setb SPEAKER ;Turn on speaker
+090D D28E       527       setb TR1 ;Start playback by enabling Timer1
+090F 020A44     528           ljmp state_8_hop1
+0912            529   
+0912            530       play_4:
+0912 B40431     531           cjne a, #0x04, play_5
+0915            532       ; ***play audio***
+0915 C28E       532       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0917 D2A5       532       setb FLASH_CE
+0919 C2A6       532       clr SPEAKER ; Turn off speaker
+091B            532       
+091B C2A5       532       clr FLASH_CE ; Enable SPI Flash
+091D 7403       532       mov a, #READ_BYTES
+091F 120494     532       lcall Send_SPI
+0922            532       ; Set the initial position in memory where to start playing
+0922            532       
+0922 7401       532       mov a, #0x01 ; change initial position
+0924 120494     532       lcall Send_SPI
+0927 74F4       532       mov a, #0xf4 ; next memory position
+0929 120494     532       lcall Send_SPI
+092C 7400       532       mov a, #0x00 ; next memory position
+092E 120494     532       lcall Send_SPI
+0931 7401       532       mov a, #0x01 ; request first byte to send to DAC
+0933 120494     532       lcall Send_SPI
+0936            532       
+0936            532       ; How many bytes to play?
+0936 754E00     532       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0939 754D1B     532       mov w+1, #0x1b ; Load the middle byte of the number of bytes to play
+093C 754C58     532       mov w+0, #0x58 ; Load the low byte of the number of bytes to play
+093F            532       
+093F            532       
+093F D2A6       532       setb SPEAKER ;Turn on speaker
+0941 D28E       532       setb TR1 ;Start playback by enabling Timer1
+0943 020A44     533           ljmp state_8_hop1
+0946            534   
+0946            535       play_5:
+0946 B40531     536           cjne a, #0x05, play_6
+0949            537       ; ***play audio***
+0949 C28E       537       clr TR1 ; Stop Timer 1 ISR from playing previous request
+094B D2A5       537       setb FLASH_CE
+094D C2A6       537       clr SPEAKER ; Turn off speaker
+094F            537       
+094F C2A5       537       clr FLASH_CE ; Enable SPI Flash
+0951 7403       537       mov a, #READ_BYTES
+0953 120494     537       lcall Send_SPI
+0956            537       ; Set the initial position in memory where to start playing
+0956            537       
+0956 7402       537       mov a, #0x02 ; change initial position
+0958 120494     537       lcall Send_SPI
+095B 7407       537       mov a, #0x07 ; next memory position
+095D 120494     537       lcall Send_SPI
+0960 7488       537       mov a, #0x88 ; next memory position
+0962 120494     537       lcall Send_SPI
+0965 7402       537       mov a, #0x02 ; request first byte to send to DAC
+0967 120494     537       lcall Send_SPI
+096A            537       
+096A            537       ; How many bytes to play?
+096A 754E00     537       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+096D 754D1B     537       mov w+1, #0x1b ; Load the middle byte of the number of bytes to play
+0970 754C58     537       mov w+0, #0x58 ; Load the low byte of the number of bytes to play
+0973            537       
+0973            537       
+0973 D2A6       537       setb SPEAKER ;Turn on speaker
+0975 D28E       537       setb TR1 ;Start playback by enabling Timer1
+0977 020A44     538           ljmp state_8_hop1
+097A            539   
+097A            540       play_6:
+097A B40631     541           cjne a, #0x06, play_7
+097D            542       ; ***play audio***
+097D C28E       542       clr TR1 ; Stop Timer 1 ISR from playing previous request
+097F D2A5       542       setb FLASH_CE
+0981 C2A6       542       clr SPEAKER ; Turn off speaker
+0983            542       
+0983 C2A5       542       clr FLASH_CE ; Enable SPI Flash
+0985 7403       542       mov a, #READ_BYTES
+0987 120494     542       lcall Send_SPI
+098A            542       ; Set the initial position in memory where to start playing
+098A            542       
+098A 7402       542       mov a, #0x02 ; change initial position
+098C 120494     542       lcall Send_SPI
+098F 7426       542       mov a, #0x26 ; next memory position
+0991 120494     542       lcall Send_SPI
+0994 74C8       542       mov a, #0xc8 ; next memory position
+0996 120494     542       lcall Send_SPI
+0999 7402       542       mov a, #0x02 ; request first byte to send to DAC
+099B 120494     542       lcall Send_SPI
+099E            542       
+099E            542       ; How many bytes to play?
+099E 754E00     542       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+09A1 754D1F     542       mov w+1, #0x1f ; Load the middle byte of the number of bytes to play
+09A4 754C40     542       mov w+0, #0x40 ; Load the low byte of the number of bytes to play
+09A7            542       
+09A7            542       
+09A7 D2A6       542       setb SPEAKER ;Turn on speaker
+09A9 D28E       542       setb TR1 ;Start playback by enabling Timer1
+09AB 020A44     543           ljmp state_8_hop1
+09AE            544   
+09AE            545       play_7:
+09AE B40731     546           cjne a, #0x07, play_8
+09B1            547       ; ***play audio***
+09B1 C28E       547       clr TR1 ; Stop Timer 1 ISR from playing previous request
+09B3 D2A5       547       setb FLASH_CE
+09B5 C2A6       547       clr SPEAKER ; Turn off speaker
+09B7            547       
+09B7 C2A5       547       clr FLASH_CE ; Enable SPI Flash
+09B9 7403       547       mov a, #READ_BYTES
+09BB 120494     547       lcall Send_SPI
+09BE            547       ; Set the initial position in memory where to start playing
+09BE            547       
+09BE 7402       547       mov a, #0x02 ; change initial position
+09C0 120494     547       lcall Send_SPI
+09C3 7436       547       mov a, #0x36 ; next memory position
+09C5 120494     547       lcall Send_SPI
+09C8 7468       547       mov a, #0x68 ; next memory position
+09CA 120494     547       lcall Send_SPI
+09CD 7402       547       mov a, #0x02 ; request first byte to send to DAC
+09CF 120494     547       lcall Send_SPI
+09D2            547       
+09D2            547       ; How many bytes to play?
+09D2 754E00     547       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+09D5 754D23     547       mov w+1, #0x23 ; Load the middle byte of the number of bytes to play
+09D8 754C28     547       mov w+0, #0x28 ; Load the low byte of the number of bytes to play
+09DB            547       
+09DB            547       
+09DB D2A6       547       setb SPEAKER ;Turn on speaker
+09DD D28E       547       setb TR1 ;Start playback by enabling Timer1
+09DF 020A44     548           ljmp state_8_hop1
+09E2            549   
+09E2            550       play_8:
+09E2 B40831     551           cjne a, #0x08, play_9
+09E5            552       ; ***play audio***
+09E5 C28E       552       clr TR1 ; Stop Timer 1 ISR from playing previous request
+09E7 D2A5       552       setb FLASH_CE
+09E9 C2A6       552       clr SPEAKER ; Turn off speaker
+09EB            552       
+09EB C2A5       552       clr FLASH_CE ; Enable SPI Flash
+09ED 7403       552       mov a, #READ_BYTES
+09EF 120494     552       lcall Send_SPI
+09F2            552       ; Set the initial position in memory where to start playing
+09F2            552       
+09F2 7402       552       mov a, #0x02 ; change initial position
+09F4 120494     552       lcall Send_SPI
+09F7 7457       552       mov a, #0x57 ; next memory position
+09F9 120494     552       lcall Send_SPI
+09FC 749C       552       mov a, #0x9c ; next memory position
+09FE 120494     552       lcall Send_SPI
+0A01 7402       552       mov a, #0x02 ; request first byte to send to DAC
+0A03 120494     552       lcall Send_SPI
+0A06            552       
+0A06            552       ; How many bytes to play?
+0A06 754E00     552       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0A09 754D1B     552       mov w+1, #0x1b ; Load the middle byte of the number of bytes to play
+0A0C 754C58     552       mov w+0, #0x58 ; Load the low byte of the number of bytes to play
+0A0F            552       
+0A0F            552       
+0A0F D2A6       552       setb SPEAKER ;Turn on speaker
+0A11 D28E       552       setb TR1 ;Start playback by enabling Timer1
+0A13 020A44     553           ljmp state_8_hop1
+0A16            554   
+0A16            555       play_9:
+0A16            556       ; ***play audio***
+0A16 C28E       556       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0A18 D2A5       556       setb FLASH_CE
+0A1A C2A6       556       clr SPEAKER ; Turn off speaker
+0A1C            556       
+0A1C C2A5       556       clr FLASH_CE ; Enable SPI Flash
+0A1E 7403       556       mov a, #READ_BYTES
+0A20 120494     556       lcall Send_SPI
+0A23            556       ; Set the initial position in memory where to start playing
+0A23            556       
+0A23 7402       556       mov a, #0x02 ; change initial position
+0A25 120494     556       lcall Send_SPI
+0A28 7469       556       mov a, #0x69 ; next memory position
+0A2A 120494     556       lcall Send_SPI
+0A2D 7430       556       mov a, #0x30 ; next memory position
+0A2F 120494     556       lcall Send_SPI
+0A32 7402       556       mov a, #0x02 ; request first byte to send to DAC
+0A34 120494     556       lcall Send_SPI
+0A37            556       
+0A37            556       ; How many bytes to play?
+0A37 754E00     556       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0A3A 754D1F     556       mov w+1, #0x1f ; Load the middle byte of the number of bytes to play
+0A3D 754C40     556       mov w+0, #0x40 ; Load the low byte of the number of bytes to play
+0A40            556       
+0A40            556       
+0A40 D2A6       556       setb SPEAKER ;Turn on speaker
+0A42 D28E       556       setb TR1 ;Start playback by enabling Timer1
+0A44            557   
+0A44            558   state_8_hop1:
+0A44            559   ; go to state_8_sound
+0A44 020C4C     560       ljmp state_8_sound
+0A47            561   
+0A47            562   
+0A47            563   state_7_sound:
+0A47            564   ; play 10 - 19
+0A47            565       ;ljmp PLAYBACK_TEMP
+0A47 B40A31     566       cjne a, #0x0a, play_11
+0A4A            567       ; ***play audio***
+0A4A C28E       567       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0A4C D2A5       567       setb FLASH_CE
+0A4E C2A6       567       clr SPEAKER ; Turn off speaker
+0A50            567       
+0A50 C2A5       567       clr FLASH_CE ; Enable SPI Flash
+0A52 7403       567       mov a, #READ_BYTES
+0A54 120494     567       lcall Send_SPI
+0A57            567       ; Set the initial position in memory where to start playing
+0A57            567       
+0A57 7402       567       mov a, #0x02 ; change initial position
+0A59 120494     567       lcall Send_SPI
+0A5C 7484       567       mov a, #0x84 ; next memory position
+0A5E 120494     567       lcall Send_SPI
+0A61 7488       567       mov a, #0x88 ; next memory position
+0A63 120494     567       lcall Send_SPI
+0A66 7402       567       mov a, #0x02 ; request first byte to send to DAC
+0A68 120494     567       lcall Send_SPI
+0A6B            567       
+0A6B            567       ; How many bytes to play?
+0A6B 754E00     567       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0A6E 754D17     567       mov w+1, #0x17 ; Load the middle byte of the number of bytes to play
+0A71 754C70     567       mov w+0, #0x70 ; Load the low byte of the number of bytes to play
+0A74            567       
+0A74            567       
+0A74 D2A6       567       setb SPEAKER ;Turn on speaker
+0A76 D28E       567       setb TR1 ;Start playback by enabling Timer1
+0A78 020C49     568       ljmp state_8_hop2
+0A7B            569   
+0A7B            570       play_11:
+0A7B B40B31     571           cjne a, #0x0b, play_12
+0A7E            572       ; ***play audio***
+0A7E C28E       572       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0A80 D2A5       572       setb FLASH_CE
+0A82 C2A6       572       clr SPEAKER ; Turn off speaker
+0A84            572       
+0A84 C2A5       572       clr FLASH_CE ; Enable SPI Flash
+0A86 7403       572       mov a, #READ_BYTES
+0A88 120494     572       lcall Send_SPI
+0A8B            572       ; Set the initial position in memory where to start playing
+0A8B            572       
+0A8B 7402       572       mov a, #0x02 ; change initial position
+0A8D 120494     572       lcall Send_SPI
+0A90 749B       572       mov a, #0x9b ; next memory position
+0A92 120494     572       lcall Send_SPI
+0A95 74F8       572       mov a, #0xf8 ; next memory position
+0A97 120494     572       lcall Send_SPI
+0A9A 7402       572       mov a, #0x02 ; request first byte to send to DAC
+0A9C 120494     572       lcall Send_SPI
+0A9F            572       
+0A9F            572       ; How many bytes to play?
+0A9F 754E00     572       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0AA2 754D1F     572       mov w+1, #0x1f ; Load the middle byte of the number of bytes to play
+0AA5 754C40     572       mov w+0, #0x40 ; Load the low byte of the number of bytes to play
+0AA8            572       
+0AA8            572       
+0AA8 D2A6       572       setb SPEAKER ;Turn on speaker
+0AAA D28E       572       setb TR1 ;Start playback by enabling Timer1
+0AAC 020C49     573           ljmp state_8_hop2
+0AAF            574   
+0AAF            575       play_12:
+0AAF B40C31     576           cjne a, #0x0c, play_13
+0AB2            577       ; ***play audio***
+0AB2 C28E       577       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0AB4 D2A5       577       setb FLASH_CE
+0AB6 C2A6       577       clr SPEAKER ; Turn off speaker
+0AB8            577       
+0AB8 C2A5       577       clr FLASH_CE ; Enable SPI Flash
+0ABA 7403       577       mov a, #READ_BYTES
+0ABC 120494     577       lcall Send_SPI
+0ABF            577       ; Set the initial position in memory where to start playing
+0ABF            577       
+0ABF 7402       577       mov a, #0x02 ; change initial position
+0AC1 120494     577       lcall Send_SPI
+0AC4 74B7       577       mov a, #0xb7 ; next memory position
+0AC6 120494     577       lcall Send_SPI
+0AC9 7450       577       mov a, #0x50 ; next memory position
+0ACB 120494     577       lcall Send_SPI
+0ACE 7402       577       mov a, #0x02 ; request first byte to send to DAC
+0AD0 120494     577       lcall Send_SPI
+0AD3            577       
+0AD3            577       ; How many bytes to play?
+0AD3 754E00     577       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0AD6 754D1F     577       mov w+1, #0x1f ; Load the middle byte of the number of bytes to play
+0AD9 754C40     577       mov w+0, #0x40 ; Load the low byte of the number of bytes to play
+0ADC            577       
+0ADC            577       
+0ADC D2A6       577       setb SPEAKER ;Turn on speaker
+0ADE D28E       577       setb TR1 ;Start playback by enabling Timer1
+0AE0 020C49     578           ljmp state_8_hop2
+0AE3            579   
+0AE3            580       play_13:
+0AE3 B40D31     581           cjne a, #0x0d, play_14
+0AE6            582       ; ***play audio***
+0AE6 C28E       582       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0AE8 D2A5       582       setb FLASH_CE
+0AEA C2A6       582       clr SPEAKER ; Turn off speaker
+0AEC            582       
+0AEC C2A5       582       clr FLASH_CE ; Enable SPI Flash
+0AEE 7403       582       mov a, #READ_BYTES
+0AF0 120494     582       lcall Send_SPI
+0AF3            582       ; Set the initial position in memory where to start playing
+0AF3            582       
+0AF3 7402       582       mov a, #0x02 ; change initial position
+0AF5 120494     582       lcall Send_SPI
+0AF8 74CE       582       mov a, #0xce ; next memory position
+0AFA 120494     582       lcall Send_SPI
+0AFD 74C0       582       mov a, #0xc0 ; next memory position
+0AFF 120494     582       lcall Send_SPI
+0B02 7402       582       mov a, #0x02 ; request first byte to send to DAC
+0B04 120494     582       lcall Send_SPI
+0B07            582       
+0B07            582       ; How many bytes to play?
+0B07 754E00     582       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0B0A 754D2E     582       mov w+1, #0x2e ; Load the middle byte of the number of bytes to play
+0B0D 754CE0     582       mov w+0, #0xe0 ; Load the low byte of the number of bytes to play
+0B10            582       
+0B10            582       
+0B10 D2A6       582       setb SPEAKER ;Turn on speaker
+0B12 D28E       582       setb TR1 ;Start playback by enabling Timer1
+0B14 020C49     583           ljmp state_8_hop2
+0B17            584   
+0B17            585       play_14:
+0B17 B40E31     586           cjne a, #0x0e, play_15
+0B1A            587       ; ***play audio***
+0B1A C28E       587       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0B1C D2A5       587       setb FLASH_CE
+0B1E C2A6       587       clr SPEAKER ; Turn off speaker
+0B20            587       
+0B20 C2A5       587       clr FLASH_CE ; Enable SPI Flash
+0B22 7403       587       mov a, #READ_BYTES
+0B24 120494     587       lcall Send_SPI
+0B27            587       ; Set the initial position in memory where to start playing
+0B27            587       
+0B27 7402       587       mov a, #0x02 ; change initial position
+0B29 120494     587       lcall Send_SPI
+0B2C 74F5       587       mov a, #0xf5 ; next memory position
+0B2E 120494     587       lcall Send_SPI
+0B31 74D0       587       mov a, #0xd0 ; next memory position
+0B33 120494     587       lcall Send_SPI
+0B36 7402       587       mov a, #0x02 ; request first byte to send to DAC
+0B38 120494     587       lcall Send_SPI
+0B3B            587       
+0B3B            587       ; How many bytes to play?
+0B3B 754E00     587       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0B3E 754D36     587       mov w+1, #0x36 ; Load the middle byte of the number of bytes to play
+0B41 754CB0     587       mov w+0, #0xb0 ; Load the low byte of the number of bytes to play
+0B44            587       
+0B44            587       
+0B44 D2A6       587       setb SPEAKER ;Turn on speaker
+0B46 D28E       587       setb TR1 ;Start playback by enabling Timer1
+0B48 020C49     588           ljmp state_8_hop2
+0B4B            589   
+0B4B            590       play_15:
+0B4B B40F31     591           cjne a, #0x0f, play_16
+0B4E            592       ; ***play audio***
+0B4E C28E       592       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0B50 D2A5       592       setb FLASH_CE
+0B52 C2A6       592       clr SPEAKER ; Turn off speaker
+0B54            592       
+0B54 C2A5       592       clr FLASH_CE ; Enable SPI Flash
+0B56 7403       592       mov a, #READ_BYTES
+0B58 120494     592       lcall Send_SPI
+0B5B            592       ; Set the initial position in memory where to start playing
+0B5B            592       
+0B5B 7403       592       mov a, #0x03 ; change initial position
+0B5D 120494     592       lcall Send_SPI
+0B60 7428       592       mov a, #0x28 ; next memory position
+0B62 120494     592       lcall Send_SPI
+0B65 7498       592       mov a, #0x98 ; next memory position
+0B67 120494     592       lcall Send_SPI
+0B6A 7403       592       mov a, #0x03 ; request first byte to send to DAC
+0B6C 120494     592       lcall Send_SPI
+0B6F            592       
+0B6F            592       ; How many bytes to play?
+0B6F 754E00     592       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0B72 754D23     592       mov w+1, #0x23 ; Load the middle byte of the number of bytes to play
+0B75 754C28     592       mov w+0, #0x28 ; Load the low byte of the number of bytes to play
+0B78            592       
+0B78            592       
+0B78 D2A6       592       setb SPEAKER ;Turn on speaker
+0B7A D28E       592       setb TR1 ;Start playback by enabling Timer1
+0B7C 020C49     593           ljmp state_8_hop2
+0B7F            594   
+0B7F            595       play_16:
+0B7F B41031     596           cjne a, #0x10, play_17
+0B82            597       ; ***play audio***
+0B82 C28E       597       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0B84 D2A5       597       setb FLASH_CE
+0B86 C2A6       597       clr SPEAKER ; Turn off speaker
+0B88            597       
+0B88 C2A5       597       clr FLASH_CE ; Enable SPI Flash
+0B8A 7403       597       mov a, #READ_BYTES
+0B8C 120494     597       lcall Send_SPI
+0B8F            597       ; Set the initial position in memory where to start playing
+0B8F            597       
+0B8F 7403       597       mov a, #0x03 ; change initial position
+0B91 120494     597       lcall Send_SPI
+0B94 7447       597       mov a, #0x47 ; next memory position
+0B96 120494     597       lcall Send_SPI
+0B99 74D8       597       mov a, #0xd8 ; next memory position
+0B9B 120494     597       lcall Send_SPI
+0B9E 7403       597       mov a, #0x03 ; request first byte to send to DAC
+0BA0 120494     597       lcall Send_SPI
+0BA3            597       
+0BA3            597       ; How many bytes to play?
+0BA3 754E00     597       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0BA6 754D32     597       mov w+1, #0x32 ; Load the middle byte of the number of bytes to play
+0BA9 754CC8     597       mov w+0, #0xc8 ; Load the low byte of the number of bytes to play
+0BAC            597       
+0BAC            597       
+0BAC D2A6       597       setb SPEAKER ;Turn on speaker
+0BAE D28E       597       setb TR1 ;Start playback by enabling Timer1
+0BB0 020C49     598           ljmp state_8_hop2
+0BB3            599   
+0BB3            600       play_17:
+0BB3 B41131     601           cjne a, #0x11, play_18
+0BB6            602       ; ***play audio***
+0BB6 C28E       602       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0BB8 D2A5       602       setb FLASH_CE
+0BBA C2A6       602       clr SPEAKER ; Turn off speaker
+0BBC            602       
+0BBC C2A5       602       clr FLASH_CE ; Enable SPI Flash
+0BBE 7403       602       mov a, #READ_BYTES
+0BC0 120494     602       lcall Send_SPI
+0BC3            602       ; Set the initial position in memory where to start playing
+0BC3            602       
+0BC3 7403       602       mov a, #0x03 ; change initial position
+0BC5 120494     602       lcall Send_SPI
+0BC8 7476       602       mov a, #0x76 ; next memory position
+0BCA 120494     602       lcall Send_SPI
+0BCD 74B8       602       mov a, #0xb8 ; next memory position
+0BCF 120494     602       lcall Send_SPI
+0BD2 7403       602       mov a, #0x03 ; request first byte to send to DAC
+0BD4 120494     602       lcall Send_SPI
+0BD7            602       
+0BD7            602       ; How many bytes to play?
+0BD7 754E00     602       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0BDA 754D2E     602       mov w+1, #0x2e ; Load the middle byte of the number of bytes to play
+0BDD 754C20     602       mov w+0, #0x20 ; Load the low byte of the number of bytes to play
+0BE0            602       
+0BE0            602       
+0BE0 D2A6       602       setb SPEAKER ;Turn on speaker
+0BE2 D28E       602       setb TR1 ;Start playback by enabling Timer1
+0BE4 020C49     603           ljmp state_8_hop2
+0BE7            604   
+0BE7            605       play_18:
+0BE7 B41231     606           cjne a, #0x12, play_19
+0BEA            607       ; ***play audio***
+0BEA C28E       607       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0BEC D2A5       607       setb FLASH_CE
+0BEE C2A6       607       clr SPEAKER ; Turn off speaker
+0BF0            607       
+0BF0 C2A5       607       clr FLASH_CE ; Enable SPI Flash
+0BF2 7403       607       mov a, #READ_BYTES
+0BF4 120494     607       lcall Send_SPI
+0BF7            607       ; Set the initial position in memory where to start playing
+0BF7            607       
+0BF7 7403       607       mov a, #0x03 ; change initial position
+0BF9 120494     607       lcall Send_SPI
+0BFC 74A1       607       mov a, #0xa1 ; next memory position
+0BFE 120494     607       lcall Send_SPI
+0C01 74B0       607       mov a, #0xb0 ; next memory position
+0C03 120494     607       lcall Send_SPI
+0C06 7403       607       mov a, #0x03 ; request first byte to send to DAC
+0C08 120494     607       lcall Send_SPI
+0C0B            607       
+0C0B            607       ; How many bytes to play?
+0C0B 754E00     607       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0C0E 754D27     607       mov w+1, #0x27 ; Load the middle byte of the number of bytes to play
+0C11 754C10     607       mov w+0, #0x10 ; Load the low byte of the number of bytes to play
+0C14            607       
+0C14            607       
+0C14 D2A6       607       setb SPEAKER ;Turn on speaker
+0C16 D28E       607       setb TR1 ;Start playback by enabling Timer1
+0C18 020C49     608           ljmp state_8_hop2
+0C1B            609   
+0C1B            610       play_19:
+0C1B            611       ; ***play audio***
+0C1B C28E       611       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0C1D D2A5       611       setb FLASH_CE
+0C1F C2A6       611       clr SPEAKER ; Turn off speaker
+0C21            611       
+0C21 C2A5       611       clr FLASH_CE ; Enable SPI Flash
+0C23 7403       611       mov a, #READ_BYTES
+0C25 120494     611       lcall Send_SPI
+0C28            611       ; Set the initial position in memory where to start playing
+0C28            611       
+0C28 7403       611       mov a, #0x03 ; change initial position
+0C2A 120494     611       lcall Send_SPI
+0C2D 74C8       611       mov a, #0xc8 ; next memory position
+0C2F 120494     611       lcall Send_SPI
+0C32 74C0       611       mov a, #0xc0 ; next memory position
+0C34 120494     611       lcall Send_SPI
+0C37 7403       611       mov a, #0x03 ; request first byte to send to DAC
+0C39 120494     611       lcall Send_SPI
+0C3C            611       
+0C3C            611       ; How many bytes to play?
+0C3C 754E00     611       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0C3F 754D27     611       mov w+1, #0x27 ; Load the middle byte of the number of bytes to play
+0C42 754C10     611       mov w+0, #0x10 ; Load the low byte of the number of bytes to play
+0C45            611       
+0C45            611       
+0C45 D2A6       611       setb SPEAKER ;Turn on speaker
+0C47 D28E       611       setb TR1 ;Start playback by enabling Timer1
+0C49            612   
+0C49            613       state_8_hop2:
+0C49            614       ; go to state_8_sound
+0C49 020C4C     615           ljmp state_8_sound
+0C4C            616   
+0C4C            617   state_8_sound:
+0C4C            618   ; go to state_0_sound
+0C4C 0205AC     619       ljmp state_0_sound
+0C4F            620   
+0C4F            621   
+0C4F            622   INI_PLAYBACK_TEMP:
+0C4F            623       ; ****INITIALIZATION****
+0C4F            624       ; Configure SPI pins and turn off speaker
+0C4F            625            ;anl P2M0, #0b_1100_1110
+0C4F 43CE90     626       orl P2M0, #0b_1001_0000
+0C52            627       ;orl P2M0, #0b_0011_0001
+0C52            628            ;orl P2M1, #0b_0011_0001
+0C52 43CF90     629       orl P2M1, #0b_1001_0000
+0C55 D2A1       630            setb MY_MISO_SOUND  ; Configured as input
+0C57 D2A5       631            setb FLASH_CE ; CS=1 for SPI flash memory
+0C59 C2A0       632            clr MY_SCLK_SOUND   ; Rest state of SCLK=0
+0C5B C2A6       633            clr SPEAKER   ; Turn off speaker.
+0C5D            634            
+0C5D            635            ; Configure timer 1
+0C5D 53890F     636            anl     TMOD, #0x0F ; Clear the bits of timer 1 in TMOD
+0C60 438910     637            orl     TMOD, #0x10 ; Set timer 1 in 16-bit timer mode.  Don't change the bits of timer 0
+0C63 758DFC     638            mov TH1, #high(TIMER1_RELOAD)
+0C66 758B8C     639            mov TL1, #low(TIMER1_RELOAD)
+0C69            640            ; Set autoreload value
+0C69 75F5FC     641            mov RH1, #high(TIMER1_RELOAD)
+0C6C 75F38C     642            mov RL1, #low(TIMER1_RELOAD)
+0C6F            643   
+0C6F            644            ;Enable the timer and interrupts
+0C6F D2AB       645       setb ET1  ; Enable timer 1 interrupt
+0C71 D28E       646            setb TR1 ; Timer 1 is only enabled to play stored sound
+0C73            647   
+0C73            648            ; Configure the DAC.  The DAC output we are using is P2.3, but P2.2 is also reserved.
+0C73 75A5A0     649            mov DADI, #0b_1010_0000 ; ACON=1
+0C76 75A43A     650            mov DADC, #0b_0011_1010 ; Enabled, DAC mode, Left adjusted, CLK/4
+0C79 75AD80     651            mov DADH, #0x80 ; Middle of scale
+0C7C 75AC00     652            mov DADL, #0
+0C7F 43A440     653            orl DADC, #0b_0100_0000 ; Start DAC by GO/BSY=1
+0C82            654       check_DAC_init:
+0C82 E5A4       655            mov a, DADC
+0C84 20E6FB     656            jb acc.6, check_DAC_init ; Wait for DAC to finish
+0C87            657            
+0C87 22         658   ret
+0C88            659   
+0C88            660       
+0C88            661   ;-------------------------------------------------------------------------------------------------------------------------------
+0C88            662   ;***LCD FXNS
+0C88            663   
+                664   Display_lower_BCD mac
+                665       push ar0
+                666       mov r0, %0
+                667       lcall ?Display_lower_BCD
+                668       pop ar0
+                669   endmac
+0C88            670   
+0C88            671   ?Display_lower_BCD:
+0C88 C0E0       672       push acc
+0C8A            673       ; write least significant digit
+0C8A E8         674       mov a, r0
+0C8B 540F       675       anl a, #0fh
+0C8D 4430       676       orl a, #30h
+0C8F 12007E     677       lcall ?WriteData
+0C92 D0E0       678       pop acc
+0C94 22         679   ret
+0C95            680   
+0C95            681   
+0C95            682   SendToLCD:
+0C95 75F064     683       mov b, #100
+0C98 84         684       div ab
+0C99 4430       685       orl a, #0x30h ; Convert hundreds to ASCII
+0C9B 12007E     686       lcall ?WriteData ; Send to LCD
+0C9E E5F0       687       mov a, b    ; Remainder is in register b
+0CA0 75F00A     688       mov b, #10
+0CA3 84         689       div ab
+0CA4 4430       690       orl a, #0x30h ; Convert tens to ASCII
+0CA6 12007E     691       lcall ?WriteData; Send to LCD
+0CA9 E5F0       692       mov a, b
+0CAB 4430       693       orl a, #0x30h ; Convert units to ASCII
+0CAD 12007E     694       lcall ?WriteData; Send to LCD
+0CB0 22         695   ret
+0CB1            696   
+0CB1            697   Initialize_State_Display:
+0CB1            698   
+0CB1            699       ;***clear the screen and set new display***
+0CB1 7401       700            mov a, #0x01
+0CB3 120083     700            lcall ?WriteCommand
+0CB6 C002       701            push AR2
+0CB8 7A02       701            mov R2, #2
+0CBA 120039     701            lcall ?Wait_Milli_Seconds
+0CBD D002       701            pop AR2
+0CBF            702       
+0CBF C0E0       703            push acc
+0CC1 7401       703            mov a, #1
+0CC3 14         703            dec a
+0CC4 1200BF     703            lcall ?Set_Cursor_1 ; Select column and row
+0CC7 D0E0       703            pop acc
+0CC9 C083       704            push dph
+0CCB C082       704            push dpl
+0CCD C0E0       704            push acc
+0CCF 900404     704            mov dptr, #time
+0CD2 1200B2     704            lcall ?Send_Constant_String
+0CD5 D0E0       704            pop acc
+0CD7 D082       704            pop dpl
+0CD9 D083       704            pop dph
+0CDB            705            
+0CDB C0E0       706            push acc
+0CDD 7406       706            mov a, #6
+0CDF 14         706            dec a
+0CE0 1200BF     706            lcall ?Set_Cursor_1 ; Select column and row
+0CE3 D0E0       706            pop acc
+0CE5 C083       707            push dph
+0CE7 C082       707            push dpl
+0CE9 C0E0       707            push acc
+0CEB 900409     707            mov dptr, #colon
+0CEE 1200B2     707            lcall ?Send_Constant_String
+0CF1 D0E0       707            pop acc
+0CF3 D082       707            pop dpl
+0CF5 D083       707            pop dph
+0CF7            708      
+0CF7 C0E0       709            push acc
+0CF9 740A       709            mov a, #10
+0CFB 14         709            dec a
+0CFC 1200BF     709            lcall ?Set_Cursor_1 ; Select column and row
+0CFF D0E0       709            pop acc
+0D01 C083       710            push dph
+0D03 C082       710            push dpl
+0D05 C0E0       710            push acc
+0D07 90040B     710            mov dptr, #temp
+0D0A 1200B2     710            lcall ?Send_Constant_String
+0D0D D0E0       710            pop acc
+0D0F D082       710            pop dpl
+0D11 D083       710            pop dph
+0D13            711       
+0D13 C0E0       712            push acc
+0D15 7401       712            mov a, #1
+0D17 14         712            dec a
+0D18 1200BD     712            lcall ?Set_Cursor_2 ; Select column and row
+0D1B D0E0       712            pop acc
+0D1D C083       713            push dph
+0D1F C082       713            push dpl
+0D21 C0E0       713            push acc
+0D23 9003FD     713            mov dptr, #state
+0D26 1200B2     713            lcall ?Send_Constant_String
+0D29 D0E0       713            pop acc
+0D2B D082       713            pop dpl
+0D2D D083       713            pop dph
+0D2F 22         714   ret
+0D30            715   
+0D30            716   Update_Display:
+0D30 C0E0       717            push acc
+0D32 7405       717            mov a, #5
+0D34 14         717            dec a
+0D35 1200BF     717            lcall ?Set_Cursor_1 ; Select column and row
+0D38 D0E0       717            pop acc
+0D3A C000       718       push ar0
+0D3C A839       718       mov r0, Run_time_minutes
+0D3E 120C88     718       lcall ?Display_lower_BCD
+0D41 D000       718       pop ar0
+0D43 C0E0       719            push acc
+0D45 7407       719            mov a, #7
+0D47 14         719            dec a
+0D48 1200BF     719            lcall ?Set_Cursor_1 ; Select column and row
+0D4B D0E0       719            pop acc
+0D4D C000       720            push ar0
+0D4F A838       720            mov r0, Run_time_seconds
+0D51 1200C4     720            lcall ?Display_BCD
+0D54 D000       720            pop ar0
+0D56            721       ;Set_Cursor(1,14)
+0D56            722       ;mov a, Temp_oven
+0D56            723       ;SendToLCD(Temp_oven)
+0D56 22         724   ret
+0D57            725   
+0D57            726   State0_display:
+0D57 C0E0       727            push acc
+0D59 7401       727            mov a, #1
+0D5B 14         727            dec a
+0D5C 1200BF     727            lcall ?Set_Cursor_1 ; Select column and row
+0D5F D0E0       727            pop acc
+0D61 C083       728            push dph
+0D63 C082       728            push dpl
+0D65 C0E0       728            push acc
+0D67 9003E7     728            mov dptr, #STemp
+0D6A 1200B2     728            lcall ?Send_Constant_String
+0D6D D0E0       728            pop acc
+0D6F D082       728            pop dpl
+0D71 D083       728            pop dph
+0D73 C0E0       729            push acc
+0D75 7406       729            mov a, #6
+0D77 14         729            dec a
+0D78 1200BF     729            lcall ?Set_Cursor_1 ; Select column and row
+0D7B D0E0       729            pop acc
+0D7D E534       730       mov a, Temp_soak
+0D7F 120C95     731       lcall SendToLCD
+0D82            732       
+0D82 C0E0       733            push acc
+0D84 740A       733            mov a, #10
+0D86 14         733            dec a
+0D87 1200BF     733            lcall ?Set_Cursor_1 ; Select column and row
+0D8A D0E0       733            pop acc
+0D8C C083       734            push dph
+0D8E C082       734            push dpl
+0D90 C0E0       734            push acc
+0D92 9003ED     734            mov dptr, #STime
+0D95 1200B2     734            lcall ?Send_Constant_String
+0D98 D0E0       734            pop acc
+0D9A D082       734            pop dpl
+0D9C D083       734            pop dph
+0D9E C0E0       735            push acc
+0DA0 740E       735            mov a, #14
+0DA2 14         735            dec a
+0DA3 1200BF     735            lcall ?Set_Cursor_1 ; Select column and row
+0DA6 D0E0       735            pop acc
+0DA8 E535       736       mov a, Time_soak
+0DAA 120C95     737            lcall SendToLCD
+0DAD            738       ;Display_BCD(Time_soak)
+0DAD            739   
+0DAD            740       ;Displays Reflow Temp and Time
+0DAD C0E0       741            push acc
+0DAF 7401       741            mov a, #1
+0DB1 14         741            dec a
+0DB2 1200BD     741            lcall ?Set_Cursor_2 ; Select column and row
+0DB5 D0E0       741            pop acc
+0DB7 C083       742            push dph
+0DB9 C082       742            push dpl
+0DBB C0E0       742            push acc
+0DBD 9003F2     742            mov dptr, #RTemp
+0DC0 1200B2     742            lcall ?Send_Constant_String
+0DC3 D0E0       742            pop acc
+0DC5 D082       742            pop dpl
+0DC7 D083       742            pop dph
+0DC9 C0E0       743            push acc
+0DCB 7406       743            mov a, #6
+0DCD 14         743            dec a
+0DCE 1200BD     743            lcall ?Set_Cursor_2 ; Select column and row
+0DD1 D0E0       743            pop acc
+0DD3 E536       744       mov a, Temp_refl
+0DD5 120C95     745       lcall SendToLCD
+0DD8            746       
+0DD8 C0E0       747            push acc
+0DDA 740A       747            mov a, #10
+0DDC 14         747            dec a
+0DDD 1200BD     747            lcall ?Set_Cursor_2 ; Select column and row
+0DE0 D0E0       747            pop acc
+0DE2 C083       748            push dph
+0DE4 C082       748            push dpl
+0DE6 C0E0       748            push acc
+0DE8 9003F8     748            mov dptr, #RTime
+0DEB 1200B2     748            lcall ?Send_Constant_String
+0DEE D0E0       748            pop acc
+0DF0 D082       748            pop dpl
+0DF2 D083       748            pop dph
+0DF4 C0E0       749            push acc
+0DF6 740E       749            mov a, #14
+0DF8 14         749            dec a
+0DF9 1200BD     749            lcall ?Set_Cursor_2 ; Select column and row
+0DFC D0E0       749            pop acc
+0DFE E537       750       mov a, Time_refl
+0E00 120C95     751            lcall SendToLCD
+0E03 22         752   ret
+0E04            753   
+0E04            754   Display_3_digit_BCD:
+0E04 C0E0       755            push acc
+0E06 740E       755            mov a, #14
+0E08 14         755            dec a
+0E09 1200BF     755            lcall ?Set_Cursor_1 ; Select column and row
+0E0C D0E0       755            pop acc
+0E0E C000       756       push ar0
+0E10 A846       756       mov r0, bcd+1
+0E12 120C88     756       lcall ?Display_lower_BCD
+0E15 D000       756       pop ar0
+0E17 C000       757            push ar0
+0E19 A845       757            mov r0, bcd+0
+0E1B 1200C4     757            lcall ?Display_BCD
+0E1E D000       757            pop ar0
+0E20 22         758   ret
+0E21            759   
+0E21            760   Animation:
+0E21 740F       761            mov a, #0x0f
+0E23 120083     761            lcall ?WriteCommand ;display cursor
+0E26            762   
+0E26            763       ;name ; Move cursor to line 1 column 1
+0E26 7480       764            mov a, #0x80
+0E28 120083     764            lcall ?WriteCommand
+0E2B 7457       765            mov a, #'W'
+0E2D 12007E     765            lcall ?WriteData
+0E30 C002       766            push AR2
+0E32 7AFA       766            mov R2, #250
+0E34 120039     766            lcall ?Wait_Milli_Seconds
+0E37 D002       766            pop AR2
+0E39 7465       767            mov a, #'e'
+0E3B 12007E     767            lcall ?WriteData
+0E3E C002       768            push AR2
+0E40 7AFA       768            mov R2, #250
+0E42 120039     768            lcall ?Wait_Milli_Seconds
+0E45 D002       768            pop AR2
+0E47 746C       769            mov a, #'l'
+0E49 12007E     769            lcall ?WriteData
+0E4C C002       770            push AR2
+0E4E 7AFA       770            mov R2, #250
+0E50 120039     770            lcall ?Wait_Milli_Seconds
+0E53 D002       770            pop AR2
+0E55 7463       771            mov a, #'c'
+0E57 12007E     771            lcall ?WriteData
+0E5A C002       772            push AR2
+0E5C 7AFA       772            mov R2, #250
+0E5E 120039     772            lcall ?Wait_Milli_Seconds
+0E61 D002       772            pop AR2
+0E63 746F       773            mov a, #'o'
+0E65 12007E     773            lcall ?WriteData
+0E68 C002       774            push AR2
+0E6A 7AFA       774            mov R2, #250
+0E6C 120039     774            lcall ?Wait_Milli_Seconds
+0E6F D002       774            pop AR2
+0E71 746D       775            mov a, #'m'
+0E73 12007E     775            lcall ?WriteData
+0E76 C002       776            push AR2
+0E78 7AFA       776            mov R2, #250
+0E7A 120039     776            lcall ?Wait_Milli_Seconds
+0E7D D002       776            pop AR2
+0E7F 7465       777            mov a, #'e'
+0E81 12007E     777            lcall ?WriteData
+0E84 C002       778            push AR2
+0E86 7AFA       778            mov R2, #250
+0E88 120039     778            lcall ?Wait_Milli_Seconds
+0E8B D002       778            pop AR2
+0E8D 7421       779            mov a, #'!'
+0E8F 12007E     779            lcall ?WriteData
+0E92 C002       780            push AR2
+0E94 7AFA       780            mov R2, #250
+0E96 120039     780            lcall ?Wait_Milli_Seconds
+0E99 D002       780            pop AR2
+0E9B 7420       781            mov a, #' '
+0E9D 12007E     781            lcall ?WriteData
+0EA0 C002       782            push AR2
+0EA2 7AFA       782            mov R2, #250
+0EA4 120039     782            lcall ?Wait_Milli_Seconds
+0EA7 D002       782            pop AR2
+0EA9 7460       783            mov a, #96
+0EAB 12007E     783            lcall ?WriteData
+0EAE C002       784            push AR2
+0EB0 7AFA       784            mov R2, #250
+0EB2 120039     784            lcall ?Wait_Milli_Seconds
+0EB5 D002       784            pop AR2
+0EB7 74EF       785            mov a, #239
+0EB9 12007E     785            lcall ?WriteData
+0EBC C002       786            push AR2
+0EBE 7AFA       786            mov R2, #250
+0EC0 120039     786            lcall ?Wait_Milli_Seconds
+0EC3 D002       786            pop AR2
+0EC5 742F       787            mov a, #47
+0EC7 12007E     787            lcall ?WriteData
+0ECA 12100B     788       lcall Wait_One_Second
+0ECD 12100B     789       lcall Wait_One_Second
+0ED0 740C       790            mov a, #0x0c
+0ED2 120083     790            lcall ?WriteCommand ;clear cursor
+0ED5 22         791   ret
+0ED6            792   
+0ED6            793   ;The following functions store and restore the values--------------------------------------------------------------------------
+                794   loadbyte mac
+                795       mov a, %0
+                796       movx @dptr, a
+                797       inc dptr
+                798   endmac
+0ED6            799   
+0ED6            800   Save_Configuration:
+0ED6 C0A8       801       push IE ; Save the current state of bit EA in the stack
+0ED8 C2AF       802       clr EA ; Disable interrupts
+0EDA 75D108     803       mov FCON, #0x08 ; Page Buffer Mapping Enabled (FPS = 1)
+0EDD 907F80     804       mov dptr, #0x7f80 ; Last page of flash memory
+0EE0            805       ; Save variables
+0EE0 E534       806       mov a, temp_soak
+0EE2 F0         806       movx @dptr, a
+0EE3 A3         806       inc dptr ; @0x7f80
+0EE4 E535       807       mov a, time_soak
+0EE6 F0         807       movx @dptr, a
+0EE7 A3         807       inc dptr ; @0x7f81
+0EE8 E536       808       mov a, temp_refl
+0EEA F0         808       movx @dptr, a
+0EEB A3         808       inc dptr ; @0x7f82
+0EEC E537       809       mov a, time_refl
+0EEE F0         809       movx @dptr, a
+0EEF A3         809       inc dptr ; @0x7f83
+0EF0 7455       810       mov a, #0x55
+0EF2 F0         810       movx @dptr, a
+0EF3 A3         810       inc dptr ; First key value @0x7f84
+0EF4 74AA       811       mov a, #0xAA
+0EF6 F0         811       movx @dptr, a
+0EF7 A3         811       inc dptr ; Second key value @0x7f85
+0EF8 75D100     812       mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0) 
+0EFB 43D240     813       orl EECON, #0b01000000 ; Enable auto-erase on next write sequence  
+0EFE 75D150     814       mov FCON, #0x50 ; Write trigger first byte
+0F01 75D1A0     815       mov FCON, #0xA0 ; Write trigger second byte
+0F04            816       ; CPU idles until writing of flash completes.
+0F04 75D100     817       mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0)
+0F07 53D2BF     818       anl EECON, #0b10111111 ; Disable auto-erase
+0F0A D0A8       819       pop IE ; Restore the state of bit EA from the stack
+0F0C 22         820   ret
+0F0D            821   
+                822   getbyte mac
+                823       clr a
+                824       movc a, @a+dptr
+                825       mov %0, a
+                826       inc dptr
+                827   endmac
+0F0D            828   
+0F0D            829   Load_Configuration:
+0F0D 907F84     830       mov dptr, #0x7f84 ; First key value location.
+0F10 E4         831       clr a
+0F11 93         831       movc a, @a+dptr
+0F12 F8         831       mov R0, a
+0F13 A3         831       inc dptr ; 0x7f84 should contain 0x55
+0F14 B8551F     832       cjne R0, #0x55, Load_Defaults
+0F17 E4         833       clr a
+0F18 93         833       movc a, @a+dptr
+0F19 F8         833       mov R0, a
+0F1A A3         833       inc dptr ; 0x7f85 should contain 0xAA
+0F1B B8AA18     834       cjne R0, #0xAA, Load_Defaults
+0F1E            835   ; Keys are good.  Get stored values.
+0F1E 907F80     836       mov dptr, #0x7f80
+0F21 E4         837       clr a
+0F22 93         837       movc a, @a+dptr
+0F23 F534       837       mov Temp_soak, a
+0F25 A3         837       inc dptr ; 0x7f80
+0F26 E4         838       clr a
+0F27 93         838       movc a, @a+dptr
+0F28 F535       838       mov Time_soak, a
+0F2A A3         838       inc dptr ; 0x7f81
+0F2B E4         839       clr a
+0F2C 93         839       movc a, @a+dptr
+0F2D F536       839       mov Temp_refl, a
+0F2F A3         839       inc dptr ; 0x7f82
+0F30 E4         840       clr a
+0F31 93         840       movc a, @a+dptr
+0F32 F537       840       mov Time_refl, a
+0F34 A3         840       inc dptr ; 0x7f83
+0F35 22         841   ret
+0F36            842   
+0F36            843   Load_Defaults:
+0F36 753482     844       mov Temp_soak, #130 ; Soak Tmp Range is 130-170
+0F39 75353C     845       mov Time_soak, #0x3C ; Range 60-90 seconds
+0F3C 7536DC     846       mov Temp_refl, #220 ; Range 220-240
+0F3F 75371E     847       mov Time_refl, #0x1E ; Range 30-45 seconds
+0F42 22         848       ret 
+0F43            849   ;-------------------------------------------------------------------------------------------------------------------------------
+0F43            850   ;off state
+0F43            851   
+0F43            852   OFF_STATE:
+0F43            853       ;**CLEAR SCREEN**
+0F43 7401       854            mov a, #0x01
+0F45 120083     854            lcall ?WriteCommand
+0F48            855       ;OFF_STATE1:
+0F48            856       
+0F48 20C5FD     857       jb POWER_BUTTON, $ ; loop while the button is not pressed
+0F4B C002       858            push AR2
+0F4D 7A32       858            mov R2, #50
+0F4F 120039     858            lcall ?Wait_Milli_Seconds
+0F52 D002       858            pop AR2 ; debounce time
+0F54 20C5EC     859            jb POWER_BUTTON, OFF_STATE ; it was a bounce, try again
+0F57 30C5FD     860            jnb POWER_BUTTON, $ ; loop while the button is pressed
+0F5A 0210F4     861       ljmp main
+0F5D 22         862   ret
+0F5E            863   ;-------------------------------------------------------------------------------------------------------------------------------
+0F5E            864   
+0F5E            865   ;***CHECK TEMPERATURE BY READING VOLTAGE AND CONVERTING
+0F5E            866   Check_Temp:
+0F5E            867       
+0F5E            868       ;jnb one_seconds_flag, Check_Temp_done
+0F5E            869       ;clr one_seconds_flag
+0F5E            870       
+0F5E C297       871       clr CE_ADC
+0F60 7801       872            mov R0, #00000001B ; Start bit:1
+0F62 12047B     873            lcall DO_SPI_G
+0F65 7880       874            mov R0, #10000000B ; Single ended, read channel 0
+0F67 12047B     875            lcall DO_SPI_G
+0F6A E9         876            mov a, R1          ; R1 contains bits 8 and 9
+0F6B 5403       877            anl a, #00000011B  ; We need only the two least significant bits
+0F6D F54B       878            mov Result+1, a    ; Save result high.
+0F6F 7855       879            mov R0, #55H ; It doesn't matter what we transmit...
+0F71 12047B     880            lcall DO_SPI_G
+0F74 894A       881            mov Result+0, R1     ; R1 contains bits 0 to 7.  Save result low.
+0F76 D297       882            setb CE_ADC
+0F78            883   
+0F78 C002       884            push AR2
+0F7A 7A0A       884            mov R2, #10
+0F7C 120039     884            lcall ?Wait_Milli_Seconds
+0F7F D002       884            pop AR2
+0F81            885       ; Copy the 10-bits of the ADC conversion into the 32-bits of 'x'
+0F81 AE4A       886            mov R6, Result+0
+0F83 AF4B       887            mov R7, Result+1
+0F85 22         888   ret
+0F86            889   
+0F86            890       
+0F86            891       
+0F86            892   ;***CALCULATES THE TEMPERATURE
+0F86            893   Average_Temp:
+0F86 753D00     894            mov x+0, #low (0 % 0x10000) 
+0F89 753E00     894            mov x+1, #high(0 % 0x10000) 
+0F8C 753F00     894            mov x+2, #low (0 / 0x10000) 
+0F8F 754000     894            mov x+3, #high(0 / 0x10000) 
+0F92 7D64       895       mov R5, #100
+0F94            896   Ave_loop:
+0F94 120F5E     897       lcall Check_Temp
+0F97 754400     898       mov y+3, #0
+0F9A 754300     899       mov y+2, #0
+0F9D 8F42       900       mov y+1, R7
+0F9F 8E41       901       mov y+0, R6
+0FA1 1201B5     902       lcall add32
+0FA4 121043     903       lcall Wait10us
+0FA7 DDEB       904       djnz R5, Ave_loop
+0FA9 754164     905            mov y+0, #low (100 % 0x10000) 
+0FAC 754200     905            mov y+1, #high(100 % 0x10000) 
+0FAF 754300     905            mov y+2, #low (100 / 0x10000) 
+0FB2 754400     905            mov y+3, #high(100 / 0x10000) 
+0FB5 1202F7     906       lcall div32
+0FB8            907   
+0FB8            908       ;**INSERT MATH FUNCTIONS
+0FB8            909   
+0FB8 75414E     910            mov y+0, #low (2894 % 0x10000) 
+0FBB 75420B     910            mov y+1, #high(2894 % 0x10000) 
+0FBE 754300     910            mov y+2, #low (2894 / 0x10000) 
+0FC1 754400     910            mov y+3, #high(2894 / 0x10000)  ;6078; 2026
+0FC4 12026A     911            lcall mul32
+0FC7 754110     912            mov y+0, #low (10000 % 0x10000) 
+0FCA 754227     912            mov y+1, #high(10000 % 0x10000) 
+0FCD 754300     912            mov y+2, #low (10000 / 0x10000) 
+0FD0 754400     912            mov y+3, #high(10000 / 0x10000) 
+0FD3            912    ;14000; 7000
+0FD3 1202F7     913            lcall div32
+0FD6 754116     914            mov y+0, #low (22 % 0x10000) 
+0FD9 754200     914            mov y+1, #high(22 % 0x10000) 
+0FDC 754300     914            mov y+2, #low (22 / 0x10000) 
+0FDF 754400     914            mov y+3, #high(22 / 0x10000) 
+0FE2 1201B5     915       lcall add32
+0FE5 853D3B     916       mov Temp_oven, x+0
+0FE8            917       ;add KTemp_oven, Temp_oven, #273
+0FE8            918   
+0FE8            919   Display_Temp_BCD_Or_Kelvin:
+0FE8 1200F0     920            lcall hex2bcd ; converts binary in x to BCD in BCD
+0FEB            921       ;mov a, K_or_C
+0FEB            922       ;cjne a, #1, Display_3_digit_BCD
+0FEB            923       ;mov a, KTemp_oven
+0FEB            924       ;SendToLCD
+0FEB            925       ;sjmp Send_Temp_Port
+0FEB            926   
+0FEB            927   Display_Temp_BCD:    
+0FEB 120E04     928       lcall Display_3_digit_BCD
+0FEE            929   
+0FEE            930   Send_Temp_Port:
+0FEE            931       ;Send_BCD(bcd+4)
+0FEE            932       ;Send_BCD(bcd+3)
+0FEE            933       ;Send_BCD(bcd+2)
+0FEE C000       934       push ar0
+0FF0 A846       934       mov r0, bcd+1
+0FF2 1200DA     934       lcall ?Send_BCD
+0FF5 D000       934       pop ar0
+0FF7            934   
+0FF7 C000       935       push ar0
+0FF9 A845       935       mov r0, bcd+0
+0FFB 1200DA     935       lcall ?Send_BCD
+0FFE D000       935       pop ar0
+1000            935   
+1000 740D       936            mov a, #'\r'
+1002 120505     937            lcall putchar
+1005 740A       938            mov a, #'\n'
+1007 120505     939            lcall putchar
+100A            940   Check_Temp_done:
+100A 22         941   ret    
+100B            942   
+100B            943   ;-------------------------------------------------------------------------------------------------------------------------------
+100B            944   
+100B            945   ;Time wait
+100B            946   
+100B            947   Wait_One_Second:
+100B C002       948            push AR2
+100D 7AFA       948            mov R2, #250
+100F 120039     948            lcall ?Wait_Milli_Seconds
+1012 D002       948            pop AR2
+1014 C002       949            push AR2
+1016 7AFA       949            mov R2, #250
+1018 120039     949            lcall ?Wait_Milli_Seconds
+101B D002       949            pop AR2
+101D C002       950            push AR2
+101F 7AFA       950            mov R2, #250
+1021 120039     950            lcall ?Wait_Milli_Seconds
+1024 D002       950            pop AR2
+1026 C002       951            push AR2
+1028 7AFA       951            mov R2, #250
+102A 120039     951            lcall ?Wait_Milli_Seconds
+102D D002       951            pop AR2
+102F 22         952   ret
+1030            953   
+1030            954   Wait_Half_Second:
+1030 C002       955            push AR2
+1032 7AFA       955            mov R2, #250
+1034 120039     955            lcall ?Wait_Milli_Seconds
+1037 D002       955            pop AR2
+1039 C002       956            push AR2
+103B 7AFA       956            mov R2, #250
+103D 120039     956            lcall ?Wait_Milli_Seconds
+1040 D002       956            pop AR2
+1042 22         957   ret
+1043            958   
+1043            959   
+1043            960   
+1043            961   Wait10us:
+1043 784A       962       mov R0, #74
+1045 D8FE       963       djnz R0, $
+1047 22         964   ret
+1048            965   ; ==================================================================================================
+1048            966   
+1048            967   ;-------------------------------------;
+1048            968   ; ISR for Timer 1.  Used to playback  ;
+1048            969   ; the WAV file stored in the SPI      ;
+1048            970   ; flash memory.                       ;
+1048            971   ;-------------------------------------;
+1048            972   Timer1_ISR:
+1048            973            ; The registers used in the ISR must be saved in the stack
+1048 C0E0       974            push acc
+104A C0D0       975            push psw
+104C            976            
+104C            977            ; Check if the play counter is zero.  If so, stop playing sound.
+104C E54C       978            mov a, w+0
+104E 454D       979            orl a, w+1
+1050 454E       980            orl a, w+2
+1052 601C       981            jz stop_playing
+1054            982            
+1054            983            ; Decrement play counter 'w'.  In this implementation 'w' is a 24-bit counter.
+1054 74FF       984            mov a, #0xff
+1056 154C       985            dec w+0
+1058 B54C07     986            cjne a, w+0, keep_playing
+105B 154D       987            dec w+1
+105D B54D02     988            cjne a, w+1, keep_playing
+1060 154E       989            dec w+2
+1062            990            
+1062            991   keep_playing:
+1062 D2A6       992            setb SPEAKER
+1064 120494     993            lcall Send_SPI ; Read the next byte from the SPI Flash...
+1067            994            ;mov P0, a ; WARNING: Remove this if not using an external DAC to use the pins of P0 as GPIO
+1067 2480       995            add a, #0x80
+1069 F5AD       996            mov DADH, a ; Output to DAC. DAC output is pin P2.3
+106B 43A440     997            orl DADC, #0b_0100_0000 ; Start DAC by setting GO/BSY=1
+106E 800C       998            sjmp Timer1_ISR_Done
+1070            999   
+1070           1000   stop_playing:
+1070 C28E      1001            clr TR1 ; Stop timer 1
+1072 D2A5      1002            setb FLASH_CE  ; Disable SPI Flash
+1074 C2A6      1003            clr SPEAKER ; Turn off speaker.  Removes hissing noise when not playing sound.
+1076 75AD80    1004            mov DADH, #0x80 ; middle of range
+1079 43A440    1005            orl DADC, #0b_0100_0000 ; Start DAC by setting GO/BSY=1
+107C           1006   
+107C           1007   Timer1_ISR_Done:         
+107C D0D0      1008            pop psw
+107E D0E0      1009            pop acc
+1080 32        1010            reti
+1081           1011   ; ==================================================================================================
+1081           1012   
+1081           1013   ;---------------------------------;
+1081           1014   ; Routine to initialize the ISR   ;
+1081           1015   ; for timer 2                     ;
+1081           1016   ;---------------------------------;
+1081           1017   Timer2_init:
+1081 75C800    1018       mov T2CON, #0
+1084 75CDA9    1019       mov TH2, #high(TIMER2_RELOAD)
+1087 75CC9A    1020       mov TL2, #low(TIMER2_RELOAD)
+108A           1021   
+108A 75CBA9    1022       mov RCAP2H, #high(TIMER2_RELOAD)
+108D 75CA9A    1023       mov RCAP2L, #low(TIMER2_RELOAD)
+1090           1024   
+1090 E4        1025       clr a
+1091 F530      1026       mov Count1ms+0, a
+1093 F531      1027       mov Count1ms+1, a
+1095 F532      1028       mov Count5sec , a
+1097 D2AD      1029       setb ET2
+1099 D2CA      1030       setb TR2
+109B C202      1031       clr enable_clk
+109D 22        1032       ret
+109E           1033   
+109E           1034   ;---------------------------------;
+109E           1035   ; ISR for timer 2                 ;
+109E           1036   ;---------------------------------;
+109E           1037   Timer2_ISR:
+109E C2CF      1038       clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in ISR
+10A0 B290      1039       cpl P1.0 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+10A2           1040            
+10A2           1041            ; The two registers used in the ISR must be saved in the stack
+10A2 C0E0      1042       push acc
+10A4 C0D0      1043       push psw
+10A6           1044            
+10A6           1045            ; Increment the 16-bit one mili second counter
+10A6 0530      1046            inc Count1ms+0    ; Increment the low 8-bits first
+10A8 E530      1047            mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
+10AA 7002      1048            jnz Inc_Done
+10AC 0531      1049            inc Count1ms+1
+10AE           1050   
+10AE           1051   Inc_Done:
+10AE           1052   
+10AE           1053   ;**Oven Power Output-------------------
+10AE           1054       ; Do the PWM thing
+10AE           1055            ; Check if Count1ms > pwm_ratio (this is a 16-bit compare)
+10AE C3        1056            clr c
+10AF E54F      1057            mov a, pwm_ratio+0
+10B1 9530      1058            subb a, Count1ms+0
+10B3 E550      1059            mov a, pwm_ratio+1
+10B5 9531      1060            subb a, Count1ms+1
+10B7           1061            ; if Count1ms > pwm_ratio  the carry is set.  Just copy the carry to the pwm output pin:
+10B7 9290      1062            mov PWM_OUTPUT, c
+10B9           1063   ;**----------------------------------
+10B9           1064            ; Check if one second has passed
+10B9 E530      1065            mov a, Count1ms+0
+10BB B4E831    1066            cjne a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
+10BE E531      1067            mov a, Count1ms+1
+10C0 B4032C    1068            cjne a, #high(1000), Timer2_ISR_done
+10C3           1069            
+10C3           1070            ; 1000 milliseconds have passed.  Set a flag so the main program knows
+10C3 D200      1071            setb one_seconds_flag ; Let the main program know one second had passed
+10C5           1072       
+10C5 0532      1073       inc Count5sec
+10C7 E532      1074       mov a, Count5sec
+10C9 B40505    1075       cjne a, #5, Set_5sec_flag_done
+10CC D201      1076       setb five_seconds_flag
+10CE E4        1077       clr a
+10CF F532      1078       mov Count5sec, a
+10D1           1079       
+10D1           1080   Set_5sec_flag_done:
+10D1 E4        1081            clr a
+10D2 F530      1082            mov Count1ms+0, a
+10D4 F531      1083            mov Count1ms+1, a
+10D6           1084   
+10D6 300216    1085       jnb enable_clk, Timer2_ISR_done ;if the clk is enabled, increment the second. Otherwise skip
+10D9           1086   ; Increment the run time counter and state time counter
+10D9 E538      1087            mov a, Run_time_seconds
+10DB 2401      1088            add a, #0x01
+10DD D4        1089            da a
+10DE F538      1090       mov Run_time_seconds, a
+10E0           1091       ;check sec overflow
+10E0 B4600A    1092       cjne a, #0x60, Check_sec_overflow_done
+10E3 753800    1093       mov Run_time_seconds, #0x00
+10E6 E539      1094       mov a, Run_time_minutes ;inc min
+10E8 2401      1095       add a, #1
+10EA D4        1096       da a
+10EB F539      1097       mov Run_time_minutes, a
+10ED           1098   Check_sec_overflow_done:
+10ED 053A      1099       inc State_time
+10EF           1100   Timer2_ISR_done:
+10EF D0D0      1101            pop psw
+10F1 D0E0      1102            pop acc
+10F3 32        1103            reti
+10F4           1104   
+10F4           1105   
+10F4           1106   ; ==================================================================================================
+10F4           1107   
+10F4           1108   main:
+10F4 75817F    1109       mov SP, #0x7F
+10F7 121081    1110       lcall Timer2_Init
+10FA           1111       ;lcall INI_SPI
+10FA 120088    1112       lcall LCD_4BIT
+10FD 1204ED    1113       lcall InitSerialPort
+1100 120C4F    1114       lcall INI_PLAYBACK_TEMP
+1103           1115       ; In case you decide to use the pins of P0, configure the port in bidirectional mode. Can be ignored
+1103 75E600    1116       mov P0M0, #0
+1106 75E700    1117       mov P0M1, #0
+1109 D2AF      1118       setb EA   ;Enable global enterupt
+110B           1119   
+110B 120F0D    1120       lcall Load_Configuration
+110E           1121   
+110E           1122       ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
+110E 754F00    1123            mov pwm_ratio+0, #low(0)
+1111 755000    1124            mov pwm_ratio+1, #high(0)
+1114 753300    1125       mov States, #0
+1117 120E21    1126       lcall Animation
+111A           1127       
+111A           1128   state0: ; idle
+111A           1129       ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
+111A           1130            ;mov pwm_ratio+0, #low(0)
+111A           1131            ;mov pwm_ratio+1, #high(0)
+111A           1132       ;mov States, #0
+111A           1133   
+111A           1134   ;***initial parameters displayed***
+111A           1135       
+111A           1136       ;Displays Soak Temp and Time
+111A 120D57    1137       lcall State0_display
+111D           1138       ;check power on
+111D 12057D    1139       lcall CHECK_POWER
+1120           1140       ; check the parameters being pressed
+1120 12050D    1141       lcall CHECK_STIME
+1123 120529    1142       lcall CHECK_STEMP
+1126 120545    1143       lcall CHECK_RTIME
+1129 120561    1144       lcall CHECK_RTEMP
+112C 120ED6    1145       lcall Save_Configuration
+112F           1146       
+112F           1147       ;lcall Check_Temp
+112F           1148       ;lcall PLAYBACK_TEMP
+112F           1149   
+112F 2085E8    1150       jb NEXT_STATE_BUTTON, state0
+1132 C002      1151            push AR2
+1134 7A32      1151            mov R2, #50
+1136 120039    1151            lcall ?Wait_Milli_Seconds
+1139 D002      1151            pop AR2 ; debounce time
+113B 2085DC    1152            jb NEXT_STATE_BUTTON, state0 ; if button not pressed, loop
+113E 3085FD    1153            jnb NEXT_STATE_BUTTON, $
+1141           1154   state0_done:
+1141 753301    1155       mov States, #1
+1144 753A00    1156       mov State_time, #0
+1147 D202      1157       setb enable_clk
+1149           1158      
+1149           1159        
+1149           1160   
+1149           1161   state1_beginning:
+1149           1162       
+1149           1163       ;Start Run Time
+1149 753800    1164       mov Run_time_seconds, #0 ; time starts at 0:00
+114C 753900    1165       mov Run_time_minutes, #0
+114F 753A00    1166       mov State_time, #0
+1152           1167   
+1152           1168       ;***clear the screen and set new display***
+1152 120CB1    1169       lcall Initialize_State_Display
+1155 C0E0      1170            push acc
+1157 7407      1170            mov a, #7
+1159 14        1170            dec a
+115A 1200BD    1170            lcall ?Set_Cursor_2 ; Select column and row
+115D D0E0      1170            pop acc
+115F C083      1171            push dph
+1161 C082      1171            push dpl
+1163 C0E0      1171            push acc
+1165 90044E    1171            mov dptr, #Ramp2Soak
+1168 1200B2    1171            lcall ?Send_Constant_String
+116B D0E0      1171            pop acc
+116D D082      1171            pop dpl
+116F D083      1171            pop dph; displays current state
+1171           1172   
+1171           1173       ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
+1171 754FE8    1174            mov pwm_ratio+0, #low(1000)
+1174 755003    1175            mov pwm_ratio+1, #high(1000)
+1177           1176       ; ***play audio***
+1177 C28E      1176       clr TR1 ; Stop Timer 1 ISR from playing previous request
+1179 D2A5      1176       setb FLASH_CE
+117B C2A6      1176       clr SPEAKER ; Turn off speaker
+117D           1176       
+117D C2A5      1176       clr FLASH_CE ; Enable SPI Flash
+117F 7403      1176       mov a, #READ_BYTES
+1181 120494    1176       lcall Send_SPI
+1184           1176       ; Set the initial position in memory where to start playing
+1184           1176       
+1184 7400      1176       mov a, #0x00 ; change initial position
+1186 120494    1176       lcall Send_SPI
+1189 7400      1176       mov a, #0x00 ; next memory position
+118B 120494    1176       lcall Send_SPI
+118E 742D      1176       mov a, #0x2d ; next memory position
+1190 120494    1176       lcall Send_SPI
+1193 7400      1176       mov a, #0x00 ; request first byte to send to DAC
+1195 120494    1176       lcall Send_SPI
+1198           1176       
+1198           1176       ; How many bytes to play?
+1198 754E00    1176       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+119B 754D4E    1176       mov w+1, #0x4e ; Load the middle byte of the number of bytes to play
+119E 754C20    1176       mov w+0, #0x20 ; Load the low byte of the number of bytes to play
+11A1           1176       
+11A1           1176       
+11A1 D2A6      1176       setb SPEAKER ;Turn on speaker
+11A3 D28E      1176       setb TR1 ;Start playback by enabling Timer1
+11A5 8003      1177       sjmp state1
+11A7           1178       
+11A7           1179   main_1:
+11A7 0210F4    1180            ljmp main
+11AA           1181   
+11AA           1182   state1: ; ramp to soak
+11AA           1183       
+11AA           1184       ;PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
+11AA           1185       ;check power on
+11AA 12057D    1186       lcall CHECK_POWER
+11AD           1187       ;Update Time and Temp
+11AD 120D30    1188       lcall Update_Display
+11B0 120F86    1189       lcall Average_Temp
+11B3 1205AC    1190       lcall SOUND_FSM
+11B6           1191   
+11B6           1192   Check_Temp_done1:
+11B6           1193   
+11B6           1194       ;check if temp is below 150 
+11B6           1195       
+11B6 E53B      1196       mov a, Temp_oven           
+11B8 9534      1197       subb a, Temp_soak
+11BA 500E      1198       jnc state1_done      ; if greater, jump to state 2
+11BC 600C      1199       jz state1_done       ; if equal to, jump to state 2
+11BE 4000      1200       jc Check_state1_time ; if less than, check state time
+11C0           1201   Check_state1_time:       ;safety
+11C0 E53A      1202       mov a, State_time      
+11C2 943C      1203       subb a, #60
+11C4 50E1      1204       jnc main_1             ; if greater, restart
+11C6 60DF      1205       jz main_1              ; if equal to, restart
+11C8 40E0      1206       jc state1            ; if less than, go back to state1
+11CA           1207   ;*Checking moving to states with buttons---- 
+11CA           1208   ;*Will remove after proper temperature reading----
+11CA           1209   
+11CA           1210       ;jb NEXT_STATE_BUTTON, state1
+11CA           1211       ;Wait_Milli_Seconds(#50) ; debounce time
+11CA           1212            ;jb NEXT_STATE_BUTTON, state1 ; if button not pressed, loop
+11CA           1213            ;jnb NEXT_STATE_BUTTON, $ 
+11CA           1214   
+11CA           1215   state1_done:
+11CA 753302    1216       mov States, #2
+11CD           1217   
+11CD           1218   ; preheat/soak
+11CD           1219   state2_beginning: 
+11CD 753A00    1220       mov State_time, #0;x00 ;clear the state time
+11D0           1221       ;***clear the screen and set new display***
+11D0 120CB1    1222       lcall Initialize_State_Display
+11D3 C0E0      1223            push acc
+11D5 7407      1223            mov a, #7
+11D7 14        1223            dec a
+11D8 1200BD    1223            lcall ?Set_Cursor_2 ; Select column and row
+11DB D0E0      1223            pop acc
+11DD C083      1224            push dph
+11DF C082      1224            push dpl
+11E1 C0E0      1224            push acc
+11E3 900458    1224            mov dptr, #Soak
+11E6 1200B2    1224            lcall ?Send_Constant_String
+11E9 D0E0      1224            pop acc
+11EB D082      1224            pop dpl
+11ED D083      1224            pop dph ;displays current state
+11EF           1225   
+11EF           1226       ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
+11EF 754FC8    1227            mov pwm_ratio+0, #low(200)
+11F2 755000    1228            mov pwm_ratio+1, #high(000)
+11F5           1229   
+11F5           1230   state2:
+11F5           1231       ; Produces SOAK on speaker
+11F5           1232       ; ***play audio***
+11F5 C28E      1232       clr TR1 ; Stop Timer 1 ISR from playing previous request
+11F7 D2A5      1232       setb FLASH_CE
+11F9 C2A6      1232       clr SPEAKER ; Turn off speaker
+11FB           1232       
+11FB C2A5      1232       clr FLASH_CE ; Enable SPI Flash
+11FD 7403      1232       mov a, #READ_BYTES
+11FF 120494    1232       lcall Send_SPI
+1202           1232       ; Set the initial position in memory where to start playing
+1202           1232       
+1202 7400      1232       mov a, #0x00 ; change initial position
+1204 120494    1232       lcall Send_SPI
+1207 7444      1232       mov a, #0x44 ; next memory position
+1209 120494    1232       lcall Send_SPI
+120C 74DD      1232       mov a, #0xdd ; next memory position
+120E 120494    1232       lcall Send_SPI
+1211 7400      1232       mov a, #0x00 ; request first byte to send to DAC
+1213 120494    1232       lcall Send_SPI
+1216           1232       
+1216           1232       ; How many bytes to play?
+1216 754E00    1232       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+1219 754D4E    1232       mov w+1, #0x4e ; Load the middle byte of the number of bytes to play
+121C 754C20    1232       mov w+0, #0x20 ; Load the low byte of the number of bytes to play
+121F           1232       
+121F           1232       
+121F D2A6      1232       setb SPEAKER ;Turn on speaker
+1221 D28E      1232       setb TR1 ;Start playback by enabling Timer1
+1223           1233       ;check power on
+1223 12057D    1234       lcall CHECK_POWER 
+1226           1235       ;Update Time and Temp
+1226 120D30    1236       lcall Update_Display
+1229 120F86    1237       lcall Average_Temp
+122C           1238       
+122C           1239       ; loop back to state2 if run time is less than soak time. If greater than jump to state3 cuz of overflow of time
+122C           1240        
+122C E53A      1241       mov a, State_time
+122E 9535      1242       subb a, Time_soak
+1230 5002      1243       jnc state2_done
+1232 40C1      1244       jc state2
+1234           1245   
+1234           1246   
+1234           1247   ;*Checking moving to states with buttons---- 
+1234           1248   ;*Will remove after proper temperature reading----
+1234           1249   
+1234           1250       ;jb NEXT_STATE_BUTTON, state2
+1234           1251       ;Wait_Milli_Seconds(#50) ; debounce time
+1234           1252            ;jb NEXT_STATE_BUTTON, state2 ; if button not pressed, loop
+1234           1253            ;jnb NEXT_STATE_BUTTON, $ 
+1234           1254       
+1234           1255   state2_done:
+1234 753A03    1256       mov State_time, #3
+1237           1257   
+1237           1258   ; ramp to peak
+1237           1259   state3_beginning:
+1237           1260       ;setb OVEN_POWER ;turn power on 100%
+1237           1261   
+1237           1262       ;***clear the screen and set new display***
+1237 120CB1    1263       lcall Initialize_State_Display
+123A C0E0      1264            push acc
+123C 7407      1264            mov a, #7
+123E 14        1264            dec a
+123F 1200BD    1264            lcall ?Set_Cursor_2 ; Select column and row
+1242 D0E0      1264            pop acc
+1244 C083      1265            push dph
+1246 C082      1265            push dpl
+1248 C0E0      1265            push acc
+124A 90045D    1265            mov dptr, #Ramp2Peak
+124D 1200B2    1265            lcall ?Send_Constant_String
+1250 D0E0      1265            pop acc
+1252 D082      1265            pop dpl
+1254 D083      1265            pop dph
+1256           1266   
+1256           1267       ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
+1256 754FE8    1268            mov pwm_ratio+0, #low(1000)
+1259 755003    1269            mov pwm_ratio+1, #high(1000)
+125C           1270   
+125C           1271   state3: 
+125C           1272       ; Produces RAMP TO PEAK on speaker
+125C           1273       ; ***play audio***
+125C C28E      1273       clr TR1 ; Stop Timer 1 ISR from playing previous request
+125E D2A5      1273       setb FLASH_CE
+1260 C2A6      1273       clr SPEAKER ; Turn off speaker
+1262           1273       
+1262 C2A5      1273       clr FLASH_CE ; Enable SPI Flash
+1264 7403      1273       mov a, #READ_BYTES
+1266 120494    1273       lcall Send_SPI
+1269           1273       ; Set the initial position in memory where to start playing
+1269           1273       
+1269 7400      1273       mov a, #0x00 ; change initial position
+126B 120494    1273       lcall Send_SPI
+126E 748B      1273       mov a, #0x8b ; next memory position
+1270 120494    1273       lcall Send_SPI
+1273 74CA      1273       mov a, #0xca ; next memory position
+1275 120494    1273       lcall Send_SPI
+1278 7400      1273       mov a, #0x00 ; request first byte to send to DAC
+127A 120494    1273       lcall Send_SPI
+127D           1273       
+127D           1273       ; How many bytes to play?
+127D 754E00    1273       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+1280 754D75    1273       mov w+1, #0x75 ; Load the middle byte of the number of bytes to play
+1283 754C30    1273       mov w+0, #0x30 ; Load the low byte of the number of bytes to play
+1286           1273       
+1286           1273       
+1286 D2A6      1273       setb SPEAKER ;Turn on speaker
+1288 D28E      1273       setb TR1 ;Start playback by enabling Timer1
+128A           1274       ;check power on
+128A 12057D    1275       lcall CHECK_POWER
+128D 120F86    1276       lcall Average_Temp
+1290           1277       
+1290           1278       
+1290           1279       ;Update Time and Temp
+1290 120D30    1280       lcall Update_Display
+1293           1281       
+1293 E53B      1282       mov a, Temp_oven           
+1295 9536      1283       subb a, Temp_refl
+1297 5004      1284       jnc state3_done    ; if greater, jump to state 4
+1299 6002      1285       jz state3_done ; if equal to, jump to state 4
+129B 40BF      1286       jc state3 ; if less than, go back to state3
+129D           1287       
+129D           1288       ;jb NEXT_STATE_BUTTON, state3
+129D           1289       ;Wait_Milli_Seconds(#50) ; debounce time
+129D           1290            ;jb NEXT_STATE_BUTTON, state3 ; if button not pressed, loop
+129D           1291            ;jnb NEXT_STATE_BUTTON, $
+129D           1292   
+129D           1293   state3_done:
+129D 753A04    1294       mov State_time, #4
+12A0           1295   
+12A0           1296   ; reflow 
+12A0           1297   state4_beginning:
+12A0           1298       
+12A0 753A00    1299       mov State_time, #0;x00 clear the state time
+12A3           1300       ;***clear the screen and set new display***
+12A3 120CB1    1301       lcall Initialize_State_Display
+12A6 C0E0      1302            push acc
+12A8 7407      1302            mov a, #7
+12AA 14        1302            dec a
+12AB 1200BD    1302            lcall ?Set_Cursor_2 ; Select column and row
+12AE D0E0      1302            pop acc
+12B0 C083      1303            push dph
+12B2 C082      1303            push dpl
+12B4 C0E0      1303            push acc
+12B6 900467    1303            mov dptr, #Reflow
+12B9 1200B2    1303            lcall ?Send_Constant_String
+12BC D0E0      1303            pop acc
+12BE D082      1303            pop dpl
+12C0 D083      1303            pop dph
+12C2           1304   
+12C2           1305       ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
+12C2 754FC8    1306            mov pwm_ratio+0, #low(200)
+12C5 755000    1307            mov pwm_ratio+1, #high(000)
+12C8           1308   
+12C8           1309   
+12C8           1310   state4:
+12C8           1311       ; Produces REFLOW on speaker
+12C8           1312       ; ***play audio***
+12C8 C28E      1312       clr TR1 ; Stop Timer 1 ISR from playing previous request
+12CA D2A5      1312       setb FLASH_CE
+12CC C2A6      1312       clr SPEAKER ; Turn off speaker
+12CE           1312       
+12CE C2A5      1312       clr FLASH_CE ; Enable SPI Flash
+12D0 7403      1312       mov a, #READ_BYTES
+12D2 120494    1312       lcall Send_SPI
+12D5           1312       ; Set the initial position in memory where to start playing
+12D5           1312       
+12D5 7400      1312       mov a, #0x00 ; change initial position
+12D7 120494    1312       lcall Send_SPI
+12DA 74F0      1312       mov a, #0xf0 ; next memory position
+12DC 120494    1312       lcall Send_SPI
+12DF 7463      1312       mov a, #0x63 ; next memory position
+12E1 120494    1312       lcall Send_SPI
+12E4 7400      1312       mov a, #0x00 ; request first byte to send to DAC
+12E6 120494    1312       lcall Send_SPI
+12E9           1312       
+12E9           1312       ; How many bytes to play?
+12E9 754E00    1312       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+12EC 754D59    1312       mov w+1, #0x59 ; Load the middle byte of the number of bytes to play
+12EF 754CD8    1312       mov w+0, #0xd8 ; Load the low byte of the number of bytes to play
+12F2           1312       
+12F2           1312       
+12F2 D2A6      1312       setb SPEAKER ;Turn on speaker
+12F4 D28E      1312       setb TR1 ;Start playback by enabling Timer1
+12F6           1313       ;check power on
+12F6 12057D    1314       lcall CHECK_POWER
+12F9           1315       ;Update Time and Temp
+12F9 120D30    1316       lcall Update_Display
+12FC 120F86    1317       lcall Average_Temp
+12FF           1318       
+12FF           1319       ; loop back to state2 if run time is less than soak time
+12FF E53A      1320       mov a, State_time
+1301 9537      1321       subb a, Time_refl
+1303 5002      1322       jnc state4_done
+1305 40C1      1323       jc state4
+1307           1324   
+1307           1325       ;*Checking moving to states with buttons---- 
+1307           1326   ;*Will remove after proper temperature reading----
+1307           1327   
+1307           1328       ;jb NEXT_STATE_BUTTON, state4
+1307           1329       ;Wait_Milli_Seconds(#50) ; debounce time
+1307           1330            ;jb NEXT_STATE_BUTTON, state4 ; if button not pressed, loop
+1307           1331            ;jnb NEXT_STATE_BUTTON, $ 
+1307           1332   
+1307           1333   state4_done: 
+1307 753A00    1334       mov State_time, #0
+130A 02130D    1335       ljmp state5_beginning 
+130D           1336   
+130D           1337   
+130D           1338   ; cooling
+130D           1339   state5_beginning: ; turn oven off
+130D C287      1340       clr OVEN_POWER
+130F           1341   
+130F           1342   ;***clear the screen and set new display***
+130F 120CB1    1343       lcall Initialize_State_Display
+1312 C083      1344            push dph
+1314 C082      1344            push dpl
+1316 C0E0      1344            push acc
+1318 90046E    1344            mov dptr, #Cooling
+131B 1200B2    1344            lcall ?Send_Constant_String
+131E D0E0      1344            pop acc
+1320 D082      1344            pop dpl
+1322 D083      1344            pop dph
+1324           1345   
+1324           1346       ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
+1324 754F00    1347            mov pwm_ratio+0, #low(0)
+1327 755000    1348            mov pwm_ratio+1, #high(0)
+132A           1349   
+132A           1350   state5:
+132A           1351       ; ***play audio***
+132A C28E      1351       clr TR1 ; Stop Timer 1 ISR from playing previous request
+132C D2A5      1351       setb FLASH_CE
+132E C2A6      1351       clr SPEAKER ; Turn off speaker
+1330           1351       
+1330 C2A5      1351       clr FLASH_CE ; Enable SPI Flash
+1332 7403      1351       mov a, #READ_BYTES
+1334 120494    1351       lcall Send_SPI
+1337           1351       ; Set the initial position in memory where to start playing
+1337           1351       
+1337 7401      1351       mov a, #0x01 ; change initial position
+1339 120494    1351       lcall Send_SPI
+133C 7448      1351       mov a, #0x48 ; next memory position
+133E 120494    1351       lcall Send_SPI
+1341 749A      1351       mov a, #0x9a ; next memory position
+1343 120494    1351       lcall Send_SPI
+1346 7401      1351       mov a, #0x01 ; request first byte to send to DAC
+1348 120494    1351       lcall Send_SPI
+134B           1351       
+134B           1351       ; How many bytes to play?
+134B 754E00    1351       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+134E 754D6B    1351       mov w+1, #0x6b ; Load the middle byte of the number of bytes to play
+1351 754C6C    1351       mov w+0, #0x6c ; Load the low byte of the number of bytes to play
+1354           1351       
+1354           1351       
+1354 D2A6      1351       setb SPEAKER ;Turn on speaker
+1356 D28E      1351       setb TR1 ;Start playback by enabling Timer1
+1358           1352       ;check power on
+1358 12057D    1353       lcall CHECK_POWER
+135B           1354       
+135B           1355       ; update display
+135B 120D30    1356       lcall Update_Display
+135E 120F86    1357       lcall Average_Temp
+1361           1358   
+1361 E53B      1359       mov a, Temp_oven
+1363 943C      1360       subb a, #60
+1365 50C3      1361       JNC state5    ; if greater, jump back to state 5
+1367 60C1      1362       JZ state5 ; if equal to, go back to state5
+1369 4000      1363       JC state5_done ; if less than, go back to state 0
+136B           1364   
+136B           1365       ;*Checking moving to states with buttons---- 
+136B           1366   ;*Will remove after proper temperature reading----
+136B           1367   
+136B           1368       ;jb NEXT_STATE_BUTTON, state5
+136B           1369       ;Wait_Milli_Seconds(#50) ; debounce time
+136B           1370            ;jb NEXT_STATE_BUTTON, state5 ; if button not pressed, loop
+136B           1371            ;jnb NEXT_STATE_BUTTON, $ 
+136B           1372   
+136B           1373   state5_done:
+136B 753A00    1374       mov State_time, #0
+136E 753300    1375       mov States, #0
+1371 0210F4    1376       ljmp main
+1374           1377   
+1374           1378   EN
