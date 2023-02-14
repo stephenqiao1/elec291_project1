@@ -732,9 +732,9 @@ Ave_loop:
 
     ;**INSERT MATH FUNCTIONS
 
-    load_Y(16384) ;6078; 2026
+    load_Y(2894) ;6078; 2026
 	lcall mul32
-	load_Y(84909) ;14000; 7000
+	load_Y(10000) ;14000; 7000
 	lcall div32
     Load_Y(22)
     lcall add32
