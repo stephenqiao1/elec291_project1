@@ -6,7 +6,7 @@ $LIST
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;These EQU must match the wiring between the microcontroller and ADC
 CLK  EQU 22118400
-TIMER1_RATE    EQU 35000 ;22050     ; 22050Hz is the sampling rate of the wav file we are playing
+TIMER1_RATE    EQU 25000 ;22050     ; 22050Hz is the sampling rate of the wav file we are playing
 TIMER1_RELOAD  EQU 0x10000-(CLK/TIMER1_RATE)
 BAUD equ 115200
 BRG_VAL equ (0x100-(CLK/(16*BAUD)))
@@ -109,6 +109,7 @@ Run_time_seconds: ds 1
 Run_time_minutes: ds 1
 State_time:       ds 1
 Temp_oven:        ds 1
+KTemp_oven:       ds 1
 x:                ds 4
 y:                ds 4
 bcd:              ds 5
@@ -116,6 +117,7 @@ Result:           ds 2
 w:                ds 3
 pwm_ratio:        ds 2
 average_count:    ds 1
+K_or_C:           ds 1
 
 $NOLIST
 $include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
@@ -299,6 +301,25 @@ CHECK_POWER:
 
 CHECK_POWER_END:
 ret
+
+CHECK_K_OR_C:
+
+    jb RTEMP_BUTTON, CHECK_K_OR_C_END ; if button not pressed, stop checking
+	Wait_Milli_Seconds(#50) ; debounce time
+	jb RTEMP_BUTTON, CHECK_K_OR_C_END ; if button not pressed, stop checking
+	jnb RTEMP_BUTTON, $ ; loop while the button is pressed
+    
+    ;mov a, K_or_C
+    ;anl a,
+    ;anl a, #00000001B  ; We need only the two least significant bits
+
+
+
+
+CHECK_K_OR_C_END:
+ret
+
+
 ;**SOUND STUFF---------------------------------------------------------------
 
 SOUND_FSM:
@@ -577,6 +598,38 @@ Display_3_digit_BCD:
 	Display_BCD(bcd+0)
 ret
 
+Animation:
+    WriteCommand(#0x0f) ;display cursor
+
+    ;name ; Move cursor to line 1 column 1
+    WriteCommand(#0x80)
+    WriteData(#'W')
+    Wait_Milli_Seconds(#250)
+    WriteData(#'e')
+    Wait_Milli_Seconds(#250)
+    WriteData(#'l')
+    Wait_Milli_Seconds(#250)
+    WriteData(#'c')
+    Wait_Milli_Seconds(#250)
+    WriteData(#'o')
+    Wait_Milli_Seconds(#250)
+    WriteData(#'m')
+    Wait_Milli_Seconds(#250)
+    WriteData(#'e')
+    Wait_Milli_Seconds(#250)
+    WriteData(#'!')
+    Wait_Milli_Seconds(#250)
+    WriteData(#' ')
+    Wait_Milli_Seconds(#250)
+    WriteData(#96)
+    Wait_Milli_Seconds(#250)
+    WriteData(#239)
+    Wait_Milli_Seconds(#250)
+    WriteData(#47)
+    lcall Wait_One_Second
+    lcall Wait_One_Second
+    WriteCommand(#0x0c) ;clear cursor
+ret
 
 ;The following functions store and restore the values--------------------------------------------------------------------------
 loadbyte mac
@@ -675,44 +728,7 @@ Check_Temp:
 	mov R7, Result+1
 ret
 
-    ;Load_y(22)
-    ;lcall add32
-
-;Check_Temp_done_2:
-    ;jnb one_seconds_flag, Check_Temp_done
-    ;mov a, result+1
-    ;Set_Cursor(1,14)
-    ;lcall SendToLCD 
-    ;Set_Cursor(1,14)
-    ;mov a, x+0
-    ;lcall SendToLCD
-    ;mov Temp_oven, a
     
-    ;mov a, States
-    ;cjne a, #0, Display_Temp_BCD
-    ;sjmp Send_Temp_Port
-	
-    ; The 4-bytes of x have the temperature in binary
-
-    ;mov Temp_oven, x+0 ;save the temperature
-
-;Display_Temp_BCD:
-;	lcall hex2bcd ; converts binary in x to BCD in BCD
-
-;    lcall Display_3_digit_BCD
-
-;Send_Temp_Port:
-;    Send_BCD(bcd+4)
-;    Send_BCD(bcd+3)
-;    Send_BCD(bcd+2)
-;	Send_BCD(bcd+1)
-;    Send_BCD(bcd+0);
-;	mov a, #'\r'
-;	lcall putchar
-;	mov a, #'\n'
-;	lcall putchar
-;Check_Temp_done:
-;ret
     
 ;***CALCULATES THE TEMPERATURE
 Average_Temp:
@@ -739,10 +755,17 @@ Ave_loop:
     Load_Y(22)
     lcall add32
     mov Temp_oven, x+0
+    ;add KTemp_oven, Temp_oven, #273
 
-Display_Temp_BCD:
+Display_Temp_BCD_Or_Kelvin:
 	lcall hex2bcd ; converts binary in x to BCD in BCD
+    ;mov a, K_or_C
+    ;cjne a, #1, Display_3_digit_BCD
+    ;mov a, KTemp_oven
+    ;SendToLCD
+    ;sjmp Send_Temp_Port
 
+Display_Temp_BCD:    
     lcall Display_3_digit_BCD
 
 Send_Temp_Port:
@@ -768,6 +791,13 @@ Wait_One_Second:
     Wait_Milli_Seconds(#250)
     Wait_Milli_Seconds(#250)
 ret
+
+Wait_Half_Second:
+    Wait_Milli_Seconds(#250)
+    Wait_Milli_Seconds(#250)
+ret
+
+
 
 Wait10us:
     mov R0, #74
@@ -907,10 +937,7 @@ Set_5sec_flag_done:
     da a
     mov Run_time_minutes, a
 Check_sec_overflow_done:
-	mov a, State_time
-	add a, #0x01
-	da a
-	mov State_time, a
+    inc State_time
 Timer2_ISR_done:
 	pop psw
 	pop acc
@@ -933,12 +960,11 @@ main:
 
     lcall Load_Configuration
 
-    PLAYBACK_TEMP(#0x01, #0xf4, #0x00, #0x1b, #0x58)
-
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
     mov States, #0
+    lcall Animation
     
 state0: ; idle
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
@@ -978,6 +1004,7 @@ state1_beginning:
     ;Start Run Time
     mov Run_time_seconds, #0 ; time starts at 0:00
     mov Run_time_minutes, #0
+    mov State_time, #0
 
     ;***clear the screen and set new display***
     lcall Initialize_State_Display
@@ -994,7 +1021,7 @@ main_1:
 
 state1: ; ramp to soak
     
-    
+     PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
     ;check power on
     lcall CHECK_POWER
     ;Update Time and Temp
@@ -1002,11 +1029,9 @@ state1: ; ramp to soak
     lcall Average_Temp
 
 Check_Temp_done1:
-   
+
     ;check if temp is below 150 
     
-    
-
     mov a, Temp_oven           
     subb a, Temp_soak
     jnc state1_done      ; if greater, jump to state 2
