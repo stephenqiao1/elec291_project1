@@ -1011,6 +1011,8 @@ Check_Temp_done1:
    
     ;check if temp is below 150 
     
+    
+
     mov a, Temp_oven           
     subb a, Temp_soak
     jnc state1_done    ; if greater, jump to state 2
