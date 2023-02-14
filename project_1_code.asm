@@ -6,7 +6,7 @@ $LIST
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;These EQU must match the wiring between the microcontroller and ADC
 CLK  EQU 22118400
-TIMER1_RATE    EQU 22050     ; 22050Hz is the sampling rate of the wav file we are playing
+TIMER1_RATE    EQU 35000 ;22050     ; 22050Hz is the sampling rate of the wav file we are playing
 TIMER1_RELOAD  EQU 0x10000-(CLK/TIMER1_RATE)
 BAUD equ 115200
 BRG_VAL equ (0x100-(CLK/(16*BAUD)))
@@ -32,7 +32,12 @@ SPEAKER         equ P2.6
 
 PWM_OUTPUT    equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
 
-FLASH_CE        equ P0.0
+
+;FLASH pins
+MY_MOSI_SOUND EQU P2.4
+MY_MISO_SOUND EQU P2.1
+MY_SCLK_SOUND EQU P2.0
+FLASH_CE        equ P2.5
 
 ;Thermowire Pins
 CE_ADC    EQU  P1.7
@@ -192,10 +197,10 @@ Send_SPI:
 	SPIBIT MAC
 	    ; Send/Receive bit %0
 		rlc a
-		mov MY_MOSI, c
-		setb MY_SCLK
-		mov c, MY_MISO
-		clr MY_SCLK
+		mov MY_MOSI_SOUND, c
+		setb MY_SCLK_SOUND
+		mov c, MY_MISO_SOUND
+		clr MY_SCLK_SOUND
 		mov acc.0, c
 	ENDMAC
 	
@@ -406,11 +411,14 @@ state_8_sound:
 INI_PLAYBACK_TEMP:
     ; ****INITIALIZATION****
     ; Configure SPI pins and turn off speaker
-	anl P2M0, #0b_1100_1110
-	orl P2M1, #0b_0011_0001
-	setb MY_MISO  ; Configured as input
+	;anl P2M0, #0b_1100_1110
+    orl P2M0, #0b_1001_0000
+    ;orl P2M0, #0b_0011_0001
+	;orl P2M1, #0b_0011_0001
+    orl P2M1, #0b_1001_0000
+	setb MY_MISO_SOUND  ; Configured as input
 	setb FLASH_CE ; CS=1 for SPI flash memory
-	clr MY_SCLK   ; Rest state of SCLK=0
+	clr MY_SCLK_SOUND   ; Rest state of SCLK=0
 	clr SPEAKER   ; Turn off speaker.
 	
 	; Configure timer 1
@@ -460,8 +468,8 @@ PLAYBACK_TEMP:
     
     ; How many bytes to play?
     mov w+2, #0x00 ; Load the high byte of the number of bytes to play
-    mov w+1, #0x1c ; Load the middle byte of the number of bytes to play
-    mov w+0, #0x5b ; Load the low byte of the number of bytes to play
+    mov w+1, #0x4e ; Load the middle byte of the number of bytes to play
+    mov w+0, #0x20 ; Load the low byte of the number of bytes to play
     
     
     setb SPEAKER ;Turn on speaker
@@ -741,9 +749,9 @@ Ave_loop:
 
     ;**INSERT MATH FUNCTIONS
 
-    load_Y(2026)
+    load_Y(6078) ;2026
 	lcall mul32
-	load_Y(7000)
+	load_Y(14000) ;7000
 	lcall div32
     Load_Y(22)
     lcall add32
@@ -969,7 +977,7 @@ state0: ; idle
     lcall Save_Configuration
     
     ;lcall Check_Temp
-    lcall PLAYBACK_TEMP
+    ;lcall PLAYBACK_TEMP
 
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
