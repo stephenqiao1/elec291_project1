@@ -385,12 +385,21 @@ state_2_sound:
     mov a, Temp_oven
     div ab
     subb a, #2
-    jz play_sound_1
+    jz play_sound_2
    
-   play_sound_1: 
-        PLAYBACK_TEMP(#0x05,#0x09,#0x10, #0x27,#0x10)
+    play_sound_1: 
+        PLAYBACK_TEMP(#0x01,#0x93, #0x84, #0x36, #0xb0) ;one
+        PLAYBACK_TEMP(#0x05,#0x09,#0x10, #0x27,#0x10) ;hundred
+        ljmp state_3_sound
 
-    ljmp state_3_sound
+    play_sound_2:
+        PLAYBACK_TEMP(#0x01, #0xc7, #0x14, #0x13, #0x88) ;two
+        PLAYBACK_TEMP(#0x05,#0x09,#0x10, #0x27,#0x10) ;hundred
+        ljmp state_3_sound
+
+
+
+    
 
 
 state_3_sound:
