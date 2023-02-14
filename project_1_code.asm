@@ -293,6 +293,8 @@ CHECK_POWER:
 	Wait_Milli_Seconds(#50) ; debounce time
 	jb POWER_BUTTON, CHECK_POWER_END ; if button not pressed, stop checking
 	jnb POWER_BUTTON, $ ; loop while the button is pressed
+    mov pwm_ratio+0, #low(0)
+	mov pwm_ratio+1, #high(0)
     lcall OFF_STATE
 
 CHECK_POWER_END:
@@ -332,7 +334,7 @@ state_2_sound:
     jz play_sound_1
    
    play_sound_1: 
-    ljmp PLAYBACK_TEMP
+    ;ljmp PLAYBACK_TEMP
 
     ljmp state_3_sound
 
@@ -386,20 +388,20 @@ state_5_sound:
     
 
     play_sound:
-        ljmp PLAYBACK_TEMP
+        ;ljmp PLAYBACK_TEMP
         ljmp state_8_sound
 
 
 state_6_sound:
 ; play 1 - 9
-    ljmp PLAYBACK_TEMP
+    ;ljmp PLAYBACK_TEMP
 ; go to state_8_sound
     ljmp state_8_sound
 
 
 state_7_sound:
 ; play 10 - 19
-    ljmp PLAYBACK_TEMP
+    ;ljmp PLAYBACK_TEMP
 ; go to state_8_sound 
     ljmp state_8_sound
 
@@ -446,7 +448,7 @@ INI_PLAYBACK_TEMP:
 	
 ret
 
-PLAYBACK_TEMP:
+PLAYBACK_TEMP MAC
     ; ***play audio***
     clr TR1 ; Stop Timer 1 ISR from playing previous request
     setb FLASH_CE
@@ -457,24 +459,24 @@ PLAYBACK_TEMP:
     lcall Send_SPI
     ; Set the initial position in memory where to start playing
     
-    mov a, #0x00 ; change initial position
+    mov a, %0 ; change initial position
     lcall Send_SPI
-    mov a, #0x00 ; next memory position
+    mov a, %1 ; next memory position
     lcall Send_SPI
-    mov a, #0x2d ; next memory position
+    mov a, %2 ; next memory position
     lcall Send_SPI
-    mov a, #0x00 ; request first byte to send to DAC
+    mov a, %0 ; request first byte to send to DAC
     lcall Send_SPI
     
     ; How many bytes to play?
     mov w+2, #0x00 ; Load the high byte of the number of bytes to play
-    mov w+1, #0x4e ; Load the middle byte of the number of bytes to play
-    mov w+0, #0x20 ; Load the low byte of the number of bytes to play
+    mov w+1, %3 ; Load the middle byte of the number of bytes to play
+    mov w+0, %4 ; Load the low byte of the number of bytes to play
     
     
     setb SPEAKER ;Turn on speaker
     setb TR1 ;Start playback by enabling Timer1
-    ret
+ENDMAC
     
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;***LCD FXNS
@@ -638,8 +640,6 @@ Load_Defaults:
 OFF_STATE:
     ;**CLEAR SCREEN**
     WriteCommand(#0x01)
-    ;**TURN OFF OVEN
-    clr OVEN_POWER
     ;OFF_STATE1:
     
     jb POWER_BUTTON, $ ; loop while the button is not pressed
@@ -674,23 +674,6 @@ Check_Temp:
 	mov R6, Result+0
 	mov R7, Result+1
 ret
-
-	
-    ;mov x+2, #0
-	;mov x+3, #0
-	
-    
-        ;Load_x(0)
-        ;mov a, #50
-    ;calculate_ave:     
-        ;mov y+0, result+0
-	    ;mov y+1, result+1
-	    ;mov y+2, #0
-	    ;mov y+3, #0
-    ;djnz a, calculate_ave
-
-
-
 
     ;Load_y(22)
     ;lcall add32
@@ -749,9 +732,9 @@ Ave_loop:
 
     ;**INSERT MATH FUNCTIONS
 
-    load_Y(6078) ;2026
+    load_Y(16384) ;6078; 2026
 	lcall mul32
-	load_Y(14000) ;7000
+	load_Y(84909) ;14000; 7000
 	lcall div32
     Load_Y(22)
     lcall add32
@@ -950,7 +933,7 @@ main:
 
     lcall Load_Configuration
 
-    lcall PLAYBACK_TEMP
+    PLAYBACK_TEMP(#0x01, #0xf4, #0x00, #0x1b, #0x58)
 
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
@@ -959,8 +942,8 @@ main:
     
 state0: ; idle
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
-	mov pwm_ratio+0, #low(0)
-	mov pwm_ratio+1, #high(0)
+	;mov pwm_ratio+0, #low(0)
+	;mov pwm_ratio+1, #high(0)
     ;mov States, #0
 
 ;***initial parameters displayed***
@@ -1004,7 +987,10 @@ state1_beginning:
     ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
 	mov pwm_ratio+0, #low(1000)
 	mov pwm_ratio+1, #high(1000)
+    sjmp state1
     
+main_1:
+	ljmp main
 
 state1: ; ramp to soak
     
@@ -1023,10 +1009,15 @@ Check_Temp_done1:
 
     mov a, Temp_oven           
     subb a, Temp_soak
-    jnc state1_done    ; if greater, jump to state 2
-    jz state1_done ; if equal to, jump to state 2
-    jc state1 ; if less than, go back to state1
-
+    jnc state1_done      ; if greater, jump to state 2
+    jz state1_done       ; if equal to, jump to state 2
+    jc Check_state1_time ; if less than, check state time
+Check_state1_time:       ;safety
+    mov a, State_time      
+    subb a, #60
+    jnc main_1             ; if greater, restart
+    jz main_1              ; if equal to, restart
+    jc state1            ; if less than, go back to state1
 ;*Checking moving to states with buttons---- 
 ;*Will remove after proper temperature reading----
 
@@ -1189,6 +1180,6 @@ state5:
 state5_done:
     mov State_time, #0
     mov States, #0
-    ljmp state0
+    ljmp main
 
 END
