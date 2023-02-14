@@ -319,6 +319,39 @@ CHECK_K_OR_C:
 CHECK_K_OR_C_END:
 ret
 
+; Playback MACRO for sound --------------------------------------------------
+
+PLAYBACK_TEMP MAC
+    ; ***play audio***
+    clr TR1 ; Stop Timer 1 ISR from playing previous request
+    setb FLASH_CE
+    clr SPEAKER ; Turn off speaker
+    
+    clr FLASH_CE ; Enable SPI Flash
+    mov a, #READ_BYTES
+    lcall Send_SPI
+    ; Set the initial position in memory where to start playing
+    
+    mov a, %0 ; change initial position
+    lcall Send_SPI
+    mov a, %1 ; next memory position
+    lcall Send_SPI
+    mov a, %2 ; next memory position
+    lcall Send_SPI
+    mov a, %0 ; request first byte to send to DAC
+    lcall Send_SPI
+    
+    ; How many bytes to play?
+    mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+    mov w+1, %3 ; Load the middle byte of the number of bytes to play
+    mov w+0, %4 ; Load the low byte of the number of bytes to play
+    
+    
+    setb SPEAKER ;Turn on speaker
+    setb TR1 ;Start playback by enabling Timer1
+ENDMAC
+
+
 
 ;**SOUND STUFF---------------------------------------------------------------
 
@@ -352,18 +385,12 @@ state_2_sound:
     mov a, Temp_oven
     div ab
     subb a, #2
-    jz play_sound_2
+    jz play_sound_1
    
-    play_sound_1:
-        PLAYBACK_TEMP(#0x01, #0x93, #0x84, #0x36, #0xb0) ;play "one"
-        PLAYBACK_TEMP(#0x05,#0x09,#0x10,#0x59,#0xd8) ;play "hundred"
-        ljmp state_3_sound
+   play_sound_1: 
+        PLAYBACK_TEMP(#0x05,#0x09,#0x10, #0x27,#0x10)
 
-    play_sound_2:
-        PLAYBACK_TEMP(#0x01,#0xc7, #0x14, #0x13, #0x88) ;play "two"
-        PLAYBACK_TEMP(#0x05,#0x09,#0x10,#0x59,#0xd8) ;play "hundred"
-        ljmp state_3_sound
-
+    ljmp state_3_sound
 
 
 state_3_sound:
@@ -416,12 +443,95 @@ state_5_sound:
 
     play_sound:
         ;ljmp PLAYBACK_TEMP
-        ljmp state_8_sound
+        cjne a, #0x14, play_30   ; 20
+
+        PLAYBACK_TEMP(#0x03,#0xef,#0xd0, #0x27,#0x10)
+        ljmp state_8_hop0
+
+        play_30:
+            cjne a, #0x1e, play_30
+            PLAYBACK_TEMP(#0x04,#0x16,#0xe0, #0x23,#0x28)
+            ljmp state_8_hop0
+
+        play_40:
+            cjne a, #0x1e, play_30
+            PLAYBACK_TEMP(#0x04,#0x3d,#0xf0, #0x1f,#0x40)
+            ljmp state_8_hop0
+
+        play_50:
+            cjne a, #0x1e, play_30
+            PLAYBACK_TEMP(#0x04,#0x51,#0x78, #0x23,#0x28)
+            ljmp state_8_hop0
+
+        play_60:
+            cjne a, #0x1e, play_30
+            PLAYBACK_TEMP(#0x04,#0x74,#0xa0, #0x27,#0x10)
+            ljmp state_8_hop0
+
+        play_70:
+            cjne a, #0x1e, play_30
+            PLAYBACK_TEMP(#0x04,#0x9b,#0xb0, #0x32,#0xc8)
+            ljmp state_8_hop0
+
+        play_80:
+            cjne a, #0x1e, play_30
+            PLAYBACK_TEMP(#0x04,#0xc6,#0xa8, #0x23,#0x28)
+            ljmp state_8_hop0
+
+        play_90:
+            PLAYBACK_TEMP(#0x04,#0xed,#0xb8, #0x1f,#0x40)
+
+        state_8_hop0:
+            ljmp state_8_sound
 
 
 state_6_sound:
 ; play 1 - 9
     ;ljmp PLAYBACK_TEMP
+    cjne a, #0x01, play_2
+
+    PLAYBACK_TEMP(#0x01,#0x93,#0x84, #0x36,#0xb0)
+    ljmp state_8_hop1
+
+    play_2:
+        cjne a, #0x02, play_3
+        PLAYBACK_TEMP(#0x01,#0xc7,#0x14, #0x13,#0x88)
+        ljmp state_8_hop1
+
+    play_3:
+        cjne a, #0x03, play_4
+        PLAYBACK_TEMP(#0x01,#0xd6,#0x68, #0x23,#0x28)
+        ljmp state_8_hop1
+
+    play_4:
+        cjne a, #0x04, play_5
+        PLAYBACK_TEMP(#0x01,#0xf4,#0x00, #0x1b,#0x58)
+        ljmp state_8_hop1
+
+    play_5:
+        cjne a, #0x05, play_6
+        PLAYBACK_TEMP(#0x02,#0x07,#0x88, #0x1b,#0x58)
+        ljmp state_8_hop1
+
+    play_6:
+        cjne a, #0x06, play_7
+        PLAYBACK_TEMP(#0x02,#0x26,#0xc8, #0x1f,#0x40)
+        ljmp state_8_hop1
+
+    play_7:
+        cjne a, #0x07, play_8
+        PLAYBACK_TEMP(#0x02,#0x36,#0x68, #0x23,#0x28)
+        ljmp state_8_hop1
+
+    play_8:
+        cjne a, #0x08, play_9
+        PLAYBACK_TEMP(#0x02,#0x57,#0x9c, #0x1b,#0x58)
+        ljmp state_8_hop1
+
+    play_9:
+        PLAYBACK_TEMP(#0x02,#0x69,#0x30, #0x1f,#0x40)
+
+state_8_hop1:
 ; go to state_8_sound
     ljmp state_8_sound
 
@@ -429,7 +539,55 @@ state_6_sound:
 state_7_sound:
 ; play 10 - 19
     ;ljmp PLAYBACK_TEMP
-; go to state_8_sound 
+    cjne a, #0x0a, play_11
+    PLAYBACK_TEMP(#0x02,#0x84,#0x88, #0x17,#0x70)
+    ljmp state_8_hop2
+
+    play_11:
+        cjne a, #0x0b, play_12
+        PLAYBACK_TEMP(#0x02,#0x9b,#0xf8, #0x1f,#0x40)
+        ljmp state_8_hop2
+
+    play_12:
+        cjne a, #0x0c, play_13
+        PLAYBACK_TEMP(#0x02,#0xb7,#0x50, #0x1f,#0x40)
+        ljmp state_8_hop2
+
+    play_13:
+        cjne a, #0x0d, play_14
+        PLAYBACK_TEMP(#0x02,#0xce,#0xc0, #0x2e,#0xe0)
+        ljmp state_8_hop2
+
+    play_14:
+        cjne a, #0x0e, play_15
+        PLAYBACK_TEMP(#0x02,#0xf5,#0xd0, #0x36,#0xb0)
+        ljmp state_8_hop2
+
+    play_15:
+        cjne a, #0x0f, play_16
+        PLAYBACK_TEMP(#0x03,#0x28,#0x98, #0x23,#0x28)
+        ljmp state_8_hop2
+
+    play_16:
+        cjne a, #0x10, play_17
+        PLAYBACK_TEMP(#0x03,#0x47,#0xd8, #0x32,#0xc8)
+        ljmp state_8_hop2
+
+    play_17:
+        cjne a, #0x11, play_18
+        PLAYBACK_TEMP(#0x03,#0x76,#0xb8, #0x2e,#0x20)
+        ljmp state_8_hop2
+
+    play_18:
+        cjne a, #0x12, play_19
+        PLAYBACK_TEMP(#0x03,#0xa1,#0xb0, #0x27,#0x10)
+        ljmp state_8_hop2
+
+    play_19:
+        PLAYBACK_TEMP(#0x03,#0xc8,#0xc0, #0x27,#0x10)
+
+state_8_hop2:
+; go to state_8_sound
     ljmp state_8_sound
 
 state_8_sound:
@@ -475,35 +633,6 @@ INI_PLAYBACK_TEMP:
 	
 ret
 
-PLAYBACK_TEMP MAC
-    ; ***play audio***
-    clr TR1 ; Stop Timer 1 ISR from playing previous request
-    setb FLASH_CE
-    clr SPEAKER ; Turn off speaker
-    
-    clr FLASH_CE ; Enable SPI Flash
-    mov a, #READ_BYTES
-    lcall Send_SPI
-    ; Set the initial position in memory where to start playing
-    
-    mov a, %0 ; change initial position
-    lcall Send_SPI
-    mov a, %1 ; next memory position
-    lcall Send_SPI
-    mov a, %2 ; next memory position
-    lcall Send_SPI
-    mov a, %0 ; request first byte to send to DAC
-    lcall Send_SPI
-    
-    ; How many bytes to play?
-    mov w+2, #0x00 ; Load the high byte of the number of bytes to play
-    mov w+1, %3 ; Load the middle byte of the number of bytes to play
-    mov w+0, %4 ; Load the low byte of the number of bytes to play
-    
-    
-    setb SPEAKER ;Turn on speaker
-    setb TR1 ;Start playback by enabling Timer1
-ENDMAC
     
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;***LCD FXNS
@@ -1028,7 +1157,7 @@ main_1:
 state1: ; ramp to soak
     
     ;PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
-    PLAYBACK_TEMP(#0x01,#0x48,#0x9a, #0x59,#0xd8)
+    PLAYBACK_TEMP(#0x02,#0x6d,#0xe1, #0x15,#0x18)
     ;check power on
     lcall CHECK_POWER
     ;Update Time and Temp
