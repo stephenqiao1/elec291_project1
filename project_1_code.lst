@@ -1415,256 +1415,341 @@
 0B48           1021   
 0B48           1022   state1: ; ramp to soak
 0B48           1023       
-0B48           1024       ; ***play audio***
-0B48 C28E      1024       clr TR1 ; Stop Timer 1 ISR from playing previous request
-0B4A D2A5      1024       setb FLASH_CE
-0B4C C2A6      1024       clr SPEAKER ; Turn off speaker
-0B4E           1024       
-0B4E C2A5      1024       clr FLASH_CE ; Enable SPI Flash
-0B50 7403      1024       mov a, #READ_BYTES
-0B52 120494    1024       lcall Send_SPI
-0B55           1024       ; Set the initial position in memory where to start playing
-0B55           1024       
-0B55 7400      1024       mov a, #0x00 ; change initial position
-0B57 120494    1024       lcall Send_SPI
-0B5A 7400      1024       mov a, #0x00 ; next memory position
-0B5C 120494    1024       lcall Send_SPI
-0B5F 742D      1024       mov a, #0x2d ; next memory position
-0B61 120494    1024       lcall Send_SPI
-0B64 7400      1024       mov a, #0x00 ; request first byte to send to DAC
-0B66 120494    1024       lcall Send_SPI
-0B69           1024       
-0B69           1024       ; How many bytes to play?
-0B69 754E00    1024       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
-0B6C 754D4E    1024       mov w+1, #0x4e ; Load the middle byte of the number of bytes to play
-0B6F 754C20    1024       mov w+0, #0x20 ; Load the low byte of the number of bytes to play
-0B72           1024       
-0B72           1024       
-0B72 D2A6      1024       setb SPEAKER ;Turn on speaker
-0B74 D28E      1024       setb TR1 ;Start playback by enabling Timer1
-0B76           1025       ;check power on
-0B76 12057D    1026       lcall CHECK_POWER
-0B79           1027       ;Update Time and Temp
-0B79 1206FC    1028       lcall Update_Display
-0B7C 120952    1029       lcall Average_Temp
-0B7F           1030   
-0B7F           1031   Check_Temp_done1:
-0B7F           1032   
-0B7F           1033       ;check if temp is below 150 
-0B7F           1034       
-0B7F E53B      1035       mov a, Temp_oven           
-0B81 9534      1036       subb a, Temp_soak
-0B83 500E      1037       jnc state1_done      ; if greater, jump to state 2
-0B85 600C      1038       jz state1_done       ; if equal to, jump to state 2
-0B87 4000      1039       jc Check_state1_time ; if less than, check state time
-0B89           1040   Check_state1_time:       ;safety
-0B89 E53A      1041       mov a, State_time      
-0B8B 943C      1042       subb a, #60
-0B8D 50B6      1043       jnc main_1             ; if greater, restart
-0B8F 60B4      1044       jz main_1              ; if equal to, restart
-0B91 40B5      1045       jc state1            ; if less than, go back to state1
-0B93           1046   ;*Checking moving to states with buttons---- 
-0B93           1047   ;*Will remove after proper temperature reading----
-0B93           1048   
-0B93           1049       ;jb NEXT_STATE_BUTTON, state1
-0B93           1050       ;Wait_Milli_Seconds(#50) ; debounce time
-0B93           1051            ;jb NEXT_STATE_BUTTON, state1 ; if button not pressed, loop
-0B93           1052            ;jnb NEXT_STATE_BUTTON, $ 
-0B93           1053   
-0B93           1054   state1_done:
-0B93 753302    1055       mov States, #2
-0B96           1056   
-0B96           1057   ; preheat/soak
-0B96           1058   state2_beginning: 
-0B96 753A00    1059       mov State_time, #0;x00 ;clear the state time
-0B99           1060       ;***clear the screen and set new display***
-0B99 12067D    1061       lcall Initialize_State_Display
-0B9C C0E0      1062            push acc
-0B9E 7407      1062            mov a, #7
-0BA0 14        1062            dec a
-0BA1 1200BD    1062            lcall ?Set_Cursor_2 ; Select column and row
-0BA4 D0E0      1062            pop acc
-0BA6 C083      1063            push dph
-0BA8 C082      1063            push dpl
-0BAA C0E0      1063            push acc
-0BAC 900458    1063            mov dptr, #Soak
-0BAF 1200B2    1063            lcall ?Send_Constant_String
-0BB2 D0E0      1063            pop acc
-0BB4 D082      1063            pop dpl
-0BB6 D083      1063            pop dph ;displays current state
-0BB8           1064   
-0BB8           1065       ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
-0BB8 754FC8    1066            mov pwm_ratio+0, #low(200)
-0BBB 755000    1067            mov pwm_ratio+1, #high(000)
-0BBE           1068   
-0BBE           1069   state2:
-0BBE           1070       ;check power on
-0BBE 12057D    1071       lcall CHECK_POWER 
-0BC1           1072       ;Update Time and Temp
-0BC1 1206FC    1073       lcall Update_Display
-0BC4 120952    1074       lcall Average_Temp
-0BC7           1075       
-0BC7           1076       ; loop back to state2 if run time is less than soak time. If greater than jump to state3 cuz of overflow of time
-0BC7           1077        
-0BC7 E53A      1078       mov a, State_time
-0BC9 9535      1079       subb a, Time_soak
-0BCB 5002      1080       jnc state2_done
-0BCD 40EF      1081       jc state2
-0BCF           1082   
-0BCF           1083   
-0BCF           1084   ;*Checking moving to states with buttons---- 
-0BCF           1085   ;*Will remove after proper temperature reading----
-0BCF           1086   
-0BCF           1087       ;jb NEXT_STATE_BUTTON, state2
-0BCF           1088       ;Wait_Milli_Seconds(#50) ; debounce time
-0BCF           1089            ;jb NEXT_STATE_BUTTON, state2 ; if button not pressed, loop
-0BCF           1090            ;jnb NEXT_STATE_BUTTON, $ 
-0BCF           1091       
-0BCF           1092   state2_done:
-0BCF 753A03    1093       mov State_time, #3
-0BD2           1094   
-0BD2           1095   ; ramp to peak
-0BD2           1096   state3_beginning:
-0BD2           1097       ;setb OVEN_POWER ;turn power on 100%
-0BD2           1098   
-0BD2           1099       ;***clear the screen and set new display***
-0BD2 12067D    1100       lcall Initialize_State_Display
-0BD5 C0E0      1101            push acc
-0BD7 7407      1101            mov a, #7
-0BD9 14        1101            dec a
-0BDA 1200BD    1101            lcall ?Set_Cursor_2 ; Select column and row
-0BDD D0E0      1101            pop acc
-0BDF C083      1102            push dph
-0BE1 C082      1102            push dpl
-0BE3 C0E0      1102            push acc
-0BE5 90045D    1102            mov dptr, #Ramp2Peak
-0BE8 1200B2    1102            lcall ?Send_Constant_String
-0BEB D0E0      1102            pop acc
-0BED D082      1102            pop dpl
-0BEF D083      1102            pop dph
-0BF1           1103   
-0BF1           1104       ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
-0BF1 754FE8    1105            mov pwm_ratio+0, #low(1000)
-0BF4 755003    1106            mov pwm_ratio+1, #high(1000)
-0BF7           1107   
-0BF7           1108   state3: 
-0BF7           1109       ;check power on
-0BF7 12057D    1110       lcall CHECK_POWER
-0BFA 120952    1111       lcall Average_Temp
-0BFD           1112       
-0BFD           1113       
-0BFD           1114       ;Update Time and Temp
-0BFD 1206FC    1115       lcall Update_Display
-0C00           1116       
-0C00 E53B      1117       mov a, Temp_oven           
-0C02 9536      1118       subb a, Temp_refl
-0C04 5004      1119       jnc state3_done    ; if greater, jump to state 4
-0C06 6002      1120       jz state3_done ; if equal to, jump to state 4
-0C08 40ED      1121       jc state3 ; if less than, go back to state3
-0C0A           1122       
-0C0A           1123       ;jb NEXT_STATE_BUTTON, state3
-0C0A           1124       ;Wait_Milli_Seconds(#50) ; debounce time
-0C0A           1125            ;jb NEXT_STATE_BUTTON, state3 ; if button not pressed, loop
-0C0A           1126            ;jnb NEXT_STATE_BUTTON, $
-0C0A           1127   
-0C0A           1128   state3_done:
-0C0A 753A04    1129       mov State_time, #4
-0C0D           1130   
-0C0D           1131   ; reflow 
-0C0D           1132   state4_beginning:
-0C0D           1133       
-0C0D 753A00    1134       mov State_time, #0;x00 clear the state time
-0C10           1135       ;***clear the screen and set new display***
-0C10 12067D    1136       lcall Initialize_State_Display
-0C13 C0E0      1137            push acc
-0C15 7407      1137            mov a, #7
-0C17 14        1137            dec a
-0C18 1200BD    1137            lcall ?Set_Cursor_2 ; Select column and row
-0C1B D0E0      1137            pop acc
-0C1D C083      1138            push dph
-0C1F C082      1138            push dpl
-0C21 C0E0      1138            push acc
-0C23 900467    1138            mov dptr, #Reflow
-0C26 1200B2    1138            lcall ?Send_Constant_String
-0C29 D0E0      1138            pop acc
-0C2B D082      1138            pop dpl
-0C2D D083      1138            pop dph
-0C2F           1139   
-0C2F           1140       ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
-0C2F 754FC8    1141            mov pwm_ratio+0, #low(200)
-0C32 755000    1142            mov pwm_ratio+1, #high(000)
-0C35           1143   
-0C35           1144   
-0C35           1145   state4:
-0C35           1146       ;check power on
-0C35 12057D    1147       lcall CHECK_POWER
-0C38           1148       ;Update Time and Temp
-0C38 1206FC    1149       lcall Update_Display
-0C3B 120952    1150       lcall Average_Temp
-0C3E           1151       
-0C3E           1152       ; loop back to state2 if run time is less than soak time
-0C3E E53A      1153       mov a, State_time
-0C40 9537      1154       subb a, Time_refl
-0C42 5002      1155       jnc state4_done
-0C44 40EF      1156       jc state4
-0C46           1157   
-0C46           1158       ;*Checking moving to states with buttons---- 
-0C46           1159   ;*Will remove after proper temperature reading----
-0C46           1160   
-0C46           1161       ;jb NEXT_STATE_BUTTON, state4
-0C46           1162       ;Wait_Milli_Seconds(#50) ; debounce time
-0C46           1163            ;jb NEXT_STATE_BUTTON, state4 ; if button not pressed, loop
-0C46           1164            ;jnb NEXT_STATE_BUTTON, $ 
-0C46           1165   
-0C46           1166   state4_done: 
-0C46 753A00    1167       mov State_time, #0
-0C49 020C4C    1168       ljmp state5_beginning 
-0C4C           1169   
-0C4C           1170   
-0C4C           1171   ; cooling
-0C4C           1172   state5_beginning: ; turn oven off
-0C4C C287      1173       clr OVEN_POWER
-0C4E           1174   
-0C4E           1175   ;***clear the screen and set new display***
-0C4E 12067D    1176       lcall Initialize_State_Display
-0C51 C083      1177            push dph
-0C53 C082      1177            push dpl
-0C55 C0E0      1177            push acc
-0C57 90046E    1177            mov dptr, #Cooling
-0C5A 1200B2    1177            lcall ?Send_Constant_String
-0C5D D0E0      1177            pop acc
-0C5F D082      1177            pop dpl
-0C61 D083      1177            pop dph
-0C63           1178   
-0C63           1179       ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
-0C63 754F00    1180            mov pwm_ratio+0, #low(0)
-0C66 755000    1181            mov pwm_ratio+1, #high(0)
-0C69           1182   
-0C69           1183   state5:
-0C69           1184       ;check power on
-0C69 12057D    1185       lcall CHECK_POWER
-0C6C           1186       
-0C6C           1187       ; update display
-0C6C 1206FC    1188       lcall Update_Display
-0C6F 120952    1189       lcall Average_Temp
-0C72           1190   
-0C72 E53B      1191       mov a, Temp_oven
-0C74 943C      1192       subb a, #60
-0C76 50F1      1193       JNC state5    ; if greater, jump back to state 5
-0C78 60EF      1194       JZ state5 ; if equal to, go back to state5
-0C7A 4000      1195       JC state5_done ; if less than, go back to state 0
-0C7C           1196   
-0C7C           1197       ;*Checking moving to states with buttons---- 
-0C7C           1198   ;*Will remove after proper temperature reading----
-0C7C           1199   
-0C7C           1200       ;jb NEXT_STATE_BUTTON, state5
-0C7C           1201       ;Wait_Milli_Seconds(#50) ; debounce time
-0C7C           1202            ;jb NEXT_STATE_BUTTON, state5 ; if button not pressed, loop
-0C7C           1203            ;jnb NEXT_STATE_BUTTON, $ 
-0C7C           1204   
-0C7C           1205   state5_done:
-0C7C 753A00    1206       mov State_time, #0
-0C7F 753300    1207       mov States, #0
-0C82 020AC0    1208       ljmp main
-0C85           1209   
-0C85           1210   EN
+0B48           1024       ;PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
+0B48           1025       ; ***play audio***
+0B48 C28E      1025       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0B4A D2A5      1025       setb FLASH_CE
+0B4C C2A6      1025       clr SPEAKER ; Turn off speaker
+0B4E           1025       
+0B4E C2A5      1025       clr FLASH_CE ; Enable SPI Flash
+0B50 7403      1025       mov a, #READ_BYTES
+0B52 120494    1025       lcall Send_SPI
+0B55           1025       ; Set the initial position in memory where to start playing
+0B55           1025       
+0B55 7401      1025       mov a, #0x01 ; change initial position
+0B57 120494    1025       lcall Send_SPI
+0B5A 7448      1025       mov a, #0x48 ; next memory position
+0B5C 120494    1025       lcall Send_SPI
+0B5F 749A      1025       mov a, #0x9a ; next memory position
+0B61 120494    1025       lcall Send_SPI
+0B64 7401      1025       mov a, #0x01 ; request first byte to send to DAC
+0B66 120494    1025       lcall Send_SPI
+0B69           1025       
+0B69           1025       ; How many bytes to play?
+0B69 754E00    1025       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0B6C 754D59    1025       mov w+1, #0x59 ; Load the middle byte of the number of bytes to play
+0B6F 754CD8    1025       mov w+0, #0xd8 ; Load the low byte of the number of bytes to play
+0B72           1025       
+0B72           1025       
+0B72 D2A6      1025       setb SPEAKER ;Turn on speaker
+0B74 D28E      1025       setb TR1 ;Start playback by enabling Timer1
+0B76           1026       ;check power on
+0B76 12057D    1027       lcall CHECK_POWER
+0B79           1028       ;Update Time and Temp
+0B79 1206FC    1029       lcall Update_Display
+0B7C 120952    1030       lcall Average_Temp
+0B7F           1031   
+0B7F           1032   Check_Temp_done1:
+0B7F           1033   
+0B7F           1034       ;check if temp is below 150 
+0B7F           1035       
+0B7F E53B      1036       mov a, Temp_oven           
+0B81 9534      1037       subb a, Temp_soak
+0B83 500E      1038       jnc state1_done      ; if greater, jump to state 2
+0B85 600C      1039       jz state1_done       ; if equal to, jump to state 2
+0B87 4000      1040       jc Check_state1_time ; if less than, check state time
+0B89           1041   Check_state1_time:       ;safety
+0B89 E53A      1042       mov a, State_time      
+0B8B 943C      1043       subb a, #60
+0B8D 50B6      1044       jnc main_1             ; if greater, restart
+0B8F 60B4      1045       jz main_1              ; if equal to, restart
+0B91 40B5      1046       jc state1            ; if less than, go back to state1
+0B93           1047   ;*Checking moving to states with buttons---- 
+0B93           1048   ;*Will remove after proper temperature reading----
+0B93           1049   
+0B93           1050       ;jb NEXT_STATE_BUTTON, state1
+0B93           1051       ;Wait_Milli_Seconds(#50) ; debounce time
+0B93           1052            ;jb NEXT_STATE_BUTTON, state1 ; if button not pressed, loop
+0B93           1053            ;jnb NEXT_STATE_BUTTON, $ 
+0B93           1054   
+0B93           1055   state1_done:
+0B93 753302    1056       mov States, #2
+0B96           1057   
+0B96           1058   ; preheat/soak
+0B96           1059   state2_beginning: 
+0B96 753A00    1060       mov State_time, #0;x00 ;clear the state time
+0B99           1061       ;***clear the screen and set new display***
+0B99 12067D    1062       lcall Initialize_State_Display
+0B9C C0E0      1063            push acc
+0B9E 7407      1063            mov a, #7
+0BA0 14        1063            dec a
+0BA1 1200BD    1063            lcall ?Set_Cursor_2 ; Select column and row
+0BA4 D0E0      1063            pop acc
+0BA6 C083      1064            push dph
+0BA8 C082      1064            push dpl
+0BAA C0E0      1064            push acc
+0BAC 900458    1064            mov dptr, #Soak
+0BAF 1200B2    1064            lcall ?Send_Constant_String
+0BB2 D0E0      1064            pop acc
+0BB4 D082      1064            pop dpl
+0BB6 D083      1064            pop dph ;displays current state
+0BB8           1065   
+0BB8           1066       ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
+0BB8 754FC8    1067            mov pwm_ratio+0, #low(200)
+0BBB 755000    1068            mov pwm_ratio+1, #high(000)
+0BBE           1069   
+0BBE           1070   state2:
+0BBE           1071       ; Produces SOAK on speaker
+0BBE           1072       ; ***play audio***
+0BBE C28E      1072       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0BC0 D2A5      1072       setb FLASH_CE
+0BC2 C2A6      1072       clr SPEAKER ; Turn off speaker
+0BC4           1072       
+0BC4 C2A5      1072       clr FLASH_CE ; Enable SPI Flash
+0BC6 7403      1072       mov a, #READ_BYTES
+0BC8 120494    1072       lcall Send_SPI
+0BCB           1072       ; Set the initial position in memory where to start playing
+0BCB           1072       
+0BCB 7400      1072       mov a, #0x00 ; change initial position
+0BCD 120494    1072       lcall Send_SPI
+0BD0 7444      1072       mov a, #0x44 ; next memory position
+0BD2 120494    1072       lcall Send_SPI
+0BD5 74DD      1072       mov a, #0xdd ; next memory position
+0BD7 120494    1072       lcall Send_SPI
+0BDA 7400      1072       mov a, #0x00 ; request first byte to send to DAC
+0BDC 120494    1072       lcall Send_SPI
+0BDF           1072       
+0BDF           1072       ; How many bytes to play?
+0BDF 754E00    1072       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0BE2 754D4E    1072       mov w+1, #0x4e ; Load the middle byte of the number of bytes to play
+0BE5 754C20    1072       mov w+0, #0x20 ; Load the low byte of the number of bytes to play
+0BE8           1072       
+0BE8           1072       
+0BE8 D2A6      1072       setb SPEAKER ;Turn on speaker
+0BEA D28E      1072       setb TR1 ;Start playback by enabling Timer1
+0BEC           1073       ;check power on
+0BEC 12057D    1074       lcall CHECK_POWER 
+0BEF           1075       ;Update Time and Temp
+0BEF 1206FC    1076       lcall Update_Display
+0BF2 120952    1077       lcall Average_Temp
+0BF5           1078       
+0BF5           1079       ; loop back to state2 if run time is less than soak time. If greater than jump to state3 cuz of overflow of time
+0BF5           1080        
+0BF5 E53A      1081       mov a, State_time
+0BF7 9535      1082       subb a, Time_soak
+0BF9 5002      1083       jnc state2_done
+0BFB 40C1      1084       jc state2
+0BFD           1085   
+0BFD           1086   
+0BFD           1087   ;*Checking moving to states with buttons---- 
+0BFD           1088   ;*Will remove after proper temperature reading----
+0BFD           1089   
+0BFD           1090       ;jb NEXT_STATE_BUTTON, state2
+0BFD           1091       ;Wait_Milli_Seconds(#50) ; debounce time
+0BFD           1092            ;jb NEXT_STATE_BUTTON, state2 ; if button not pressed, loop
+0BFD           1093            ;jnb NEXT_STATE_BUTTON, $ 
+0BFD           1094       
+0BFD           1095   state2_done:
+0BFD 753A03    1096       mov State_time, #3
+0C00           1097   
+0C00           1098   ; ramp to peak
+0C00           1099   state3_beginning:
+0C00           1100       ;setb OVEN_POWER ;turn power on 100%
+0C00           1101   
+0C00           1102       ;***clear the screen and set new display***
+0C00 12067D    1103       lcall Initialize_State_Display
+0C03 C0E0      1104            push acc
+0C05 7407      1104            mov a, #7
+0C07 14        1104            dec a
+0C08 1200BD    1104            lcall ?Set_Cursor_2 ; Select column and row
+0C0B D0E0      1104            pop acc
+0C0D C083      1105            push dph
+0C0F C082      1105            push dpl
+0C11 C0E0      1105            push acc
+0C13 90045D    1105            mov dptr, #Ramp2Peak
+0C16 1200B2    1105            lcall ?Send_Constant_String
+0C19 D0E0      1105            pop acc
+0C1B D082      1105            pop dpl
+0C1D D083      1105            pop dph
+0C1F           1106   
+0C1F           1107       ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
+0C1F 754FE8    1108            mov pwm_ratio+0, #low(1000)
+0C22 755003    1109            mov pwm_ratio+1, #high(1000)
+0C25           1110   
+0C25           1111   state3: 
+0C25           1112       ; Produces RAMP TO PEAK on speaker
+0C25           1113       ; ***play audio***
+0C25 C28E      1113       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0C27 D2A5      1113       setb FLASH_CE
+0C29 C2A6      1113       clr SPEAKER ; Turn off speaker
+0C2B           1113       
+0C2B C2A5      1113       clr FLASH_CE ; Enable SPI Flash
+0C2D 7403      1113       mov a, #READ_BYTES
+0C2F 120494    1113       lcall Send_SPI
+0C32           1113       ; Set the initial position in memory where to start playing
+0C32           1113       
+0C32 7400      1113       mov a, #0x00 ; change initial position
+0C34 120494    1113       lcall Send_SPI
+0C37 748B      1113       mov a, #0x8b ; next memory position
+0C39 120494    1113       lcall Send_SPI
+0C3C 74CA      1113       mov a, #0xca ; next memory position
+0C3E 120494    1113       lcall Send_SPI
+0C41 7400      1113       mov a, #0x00 ; request first byte to send to DAC
+0C43 120494    1113       lcall Send_SPI
+0C46           1113       
+0C46           1113       ; How many bytes to play?
+0C46 754E00    1113       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0C49 754D75    1113       mov w+1, #0x75 ; Load the middle byte of the number of bytes to play
+0C4C 754C30    1113       mov w+0, #0x30 ; Load the low byte of the number of bytes to play
+0C4F           1113       
+0C4F           1113       
+0C4F D2A6      1113       setb SPEAKER ;Turn on speaker
+0C51 D28E      1113       setb TR1 ;Start playback by enabling Timer1
+0C53           1114       ;check power on
+0C53 12057D    1115       lcall CHECK_POWER
+0C56 120952    1116       lcall Average_Temp
+0C59           1117       
+0C59           1118       
+0C59           1119       ;Update Time and Temp
+0C59 1206FC    1120       lcall Update_Display
+0C5C           1121       
+0C5C E53B      1122       mov a, Temp_oven           
+0C5E 9536      1123       subb a, Temp_refl
+0C60 5004      1124       jnc state3_done    ; if greater, jump to state 4
+0C62 6002      1125       jz state3_done ; if equal to, jump to state 4
+0C64 40BF      1126       jc state3 ; if less than, go back to state3
+0C66           1127       
+0C66           1128       ;jb NEXT_STATE_BUTTON, state3
+0C66           1129       ;Wait_Milli_Seconds(#50) ; debounce time
+0C66           1130            ;jb NEXT_STATE_BUTTON, state3 ; if button not pressed, loop
+0C66           1131            ;jnb NEXT_STATE_BUTTON, $
+0C66           1132   
+0C66           1133   state3_done:
+0C66 753A04    1134       mov State_time, #4
+0C69           1135   
+0C69           1136   ; reflow 
+0C69           1137   state4_beginning:
+0C69           1138       
+0C69 753A00    1139       mov State_time, #0;x00 clear the state time
+0C6C           1140       ;***clear the screen and set new display***
+0C6C 12067D    1141       lcall Initialize_State_Display
+0C6F C0E0      1142            push acc
+0C71 7407      1142            mov a, #7
+0C73 14        1142            dec a
+0C74 1200BD    1142            lcall ?Set_Cursor_2 ; Select column and row
+0C77 D0E0      1142            pop acc
+0C79 C083      1143            push dph
+0C7B C082      1143            push dpl
+0C7D C0E0      1143            push acc
+0C7F 900467    1143            mov dptr, #Reflow
+0C82 1200B2    1143            lcall ?Send_Constant_String
+0C85 D0E0      1143            pop acc
+0C87 D082      1143            pop dpl
+0C89 D083      1143            pop dph
+0C8B           1144   
+0C8B           1145       ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
+0C8B 754FC8    1146            mov pwm_ratio+0, #low(200)
+0C8E 755000    1147            mov pwm_ratio+1, #high(000)
+0C91           1148   
+0C91           1149   
+0C91           1150   state4:
+0C91           1151       ; Produces REFLOW on speaker
+0C91           1152       ; ***play audio***
+0C91 C28E      1152       clr TR1 ; Stop Timer 1 ISR from playing previous request
+0C93 D2A5      1152       setb FLASH_CE
+0C95 C2A6      1152       clr SPEAKER ; Turn off speaker
+0C97           1152       
+0C97 C2A5      1152       clr FLASH_CE ; Enable SPI Flash
+0C99 7403      1152       mov a, #READ_BYTES
+0C9B 120494    1152       lcall Send_SPI
+0C9E           1152       ; Set the initial position in memory where to start playing
+0C9E           1152       
+0C9E 7400      1152       mov a, #0x00 ; change initial position
+0CA0 120494    1152       lcall Send_SPI
+0CA3 74F0      1152       mov a, #0xf0 ; next memory position
+0CA5 120494    1152       lcall Send_SPI
+0CA8 7463      1152       mov a, #0x63 ; next memory position
+0CAA 120494    1152       lcall Send_SPI
+0CAD 7400      1152       mov a, #0x00 ; request first byte to send to DAC
+0CAF 120494    1152       lcall Send_SPI
+0CB2           1152       
+0CB2           1152       ; How many bytes to play?
+0CB2 754E00    1152       mov w+2, #0x00 ; Load the high byte of the number of bytes to play
+0CB5 754D59    1152       mov w+1, #0x59 ; Load the middle byte of the number of bytes to play
+0CB8 754CD8    1152       mov w+0, #0xd8 ; Load the low byte of the number of bytes to play
+0CBB           1152       
+0CBB           1152       
+0CBB D2A6      1152       setb SPEAKER ;Turn on speaker
+0CBD D28E      1152       setb TR1 ;Start playback by enabling Timer1
+0CBF           1153       ;check power on
+0CBF 12057D    1154       lcall CHECK_POWER
+0CC2           1155       ;Update Time and Temp
+0CC2 1206FC    1156       lcall Update_Display
+0CC5 120952    1157       lcall Average_Temp
+0CC8           1158       
+0CC8           1159       ; loop back to state2 if run time is less than soak time
+0CC8 E53A      1160       mov a, State_time
+0CCA 9537      1161       subb a, Time_refl
+0CCC 5002      1162       jnc state4_done
+0CCE 40C1      1163       jc state4
+0CD0           1164   
+0CD0           1165       ;*Checking moving to states with buttons---- 
+0CD0           1166   ;*Will remove after proper temperature reading----
+0CD0           1167   
+0CD0           1168       ;jb NEXT_STATE_BUTTON, state4
+0CD0           1169       ;Wait_Milli_Seconds(#50) ; debounce time
+0CD0           1170            ;jb NEXT_STATE_BUTTON, state4 ; if button not pressed, loop
+0CD0           1171            ;jnb NEXT_STATE_BUTTON, $ 
+0CD0           1172   
+0CD0           1173   state4_done: 
+0CD0 753A00    1174       mov State_time, #0
+0CD3 020CD6    1175       ljmp state5_beginning 
+0CD6           1176   
+0CD6           1177   
+0CD6           1178   ; cooling
+0CD6           1179   state5_beginning: ; turn oven off
+0CD6 C287      1180       clr OVEN_POWER
+0CD8           1181   
+0CD8           1182   ;***clear the screen and set new display***
+0CD8 12067D    1183       lcall Initialize_State_Display
+0CDB C083      1184            push dph
+0CDD C082      1184            push dpl
+0CDF C0E0      1184            push acc
+0CE1 90046E    1184            mov dptr, #Cooling
+0CE4 1200B2    1184            lcall ?Send_Constant_String
+0CE7 D0E0      1184            pop acc
+0CE9 D082      1184            pop dpl
+0CEB D083      1184            pop dph
+0CED           1185   
+0CED           1186       ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
+0CED 754F00    1187            mov pwm_ratio+0, #low(0)
+0CF0 755000    1188            mov pwm_ratio+1, #high(0)
+0CF3           1189   
+0CF3           1190   state5:
+0CF3           1191       ;check power on
+0CF3 12057D    1192       lcall CHECK_POWER
+0CF6           1193       
+0CF6           1194       ; update display
+0CF6 1206FC    1195       lcall Update_Display
+0CF9 120952    1196       lcall Average_Temp
+0CFC           1197   
+0CFC E53B      1198       mov a, Temp_oven
+0CFE 943C      1199       subb a, #60
+0D00 50F1      1200       JNC state5    ; if greater, jump back to state 5
+0D02 60EF      1201       JZ state5 ; if equal to, go back to state5
+0D04 4000      1202       JC state5_done ; if less than, go back to state 0
+0D06           1203   
+0D06           1204       ;*Checking moving to states with buttons---- 
+0D06           1205   ;*Will remove after proper temperature reading----
+0D06           1206   
+0D06           1207       ;jb NEXT_STATE_BUTTON, state5
+0D06           1208       ;Wait_Milli_Seconds(#50) ; debounce time
+0D06           1209            ;jb NEXT_STATE_BUTTON, state5 ; if button not pressed, loop
+0D06           1210            ;jnb NEXT_STATE_BUTTON, $ 
+0D06           1211   
+0D06           1212   state5_done:
+0D06 753A00    1213       mov State_time, #0
+0D09 753300    1214       mov States, #0
+0D0C 020AC0    1215       ljmp main
+0D0F           1216   
+0D0F           1217   EN

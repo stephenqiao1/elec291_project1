@@ -1021,7 +1021,8 @@ main_1:
 
 state1: ; ramp to soak
     
-     PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
+    ;PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
+    PLAYBACK_TEMP(#0x01,#0x48,#0x9a, #0x59,#0xd8)
     ;check power on
     lcall CHECK_POWER
     ;Update Time and Temp
@@ -1067,6 +1068,8 @@ state2_beginning:
 	mov pwm_ratio+1, #high(000)
 
 state2:
+    ; Produces SOAK on speaker
+    PLAYBACK_TEMP(#0x00,#0x44,#0xdd, #0x4e,#0x20)
     ;check power on
     lcall CHECK_POWER 
     ;Update Time and Temp
@@ -1106,6 +1109,8 @@ state3_beginning:
 	mov pwm_ratio+1, #high(1000)
 
 state3: 
+    ; Produces RAMP TO PEAK on speaker
+    PLAYBACK_TEMP(#0x00,#0x8b,#0xca, #0x75,#0x30)
     ;check power on
     lcall CHECK_POWER
     lcall Average_Temp
@@ -1143,6 +1148,8 @@ state4_beginning:
 
 
 state4:
+    ; Produces REFLOW on speaker
+    PLAYBACK_TEMP(#0x00,#0xf0,#0x63, #0x59,#0xd8)
     ;check power on
     lcall CHECK_POWER
     ;Update Time and Temp
