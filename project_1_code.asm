@@ -352,12 +352,16 @@ state_2_sound:
     mov a, Temp_oven
     div ab
     subb a, #2
-    jz play_sound_1
+    jz play_sound_2
    
-   play_sound_1: 
-    ;ljmp PLAYBACK_TEMP
+    play_sound_1: 
+        PLAYBACK_TEMP(#0x01,#0x48,#0x9a, #0x59,#0xd8)
+        ljmp state_3_sound
 
-    ljmp state_3_sound
+    play_sound_2:
+        PLAYBACK_TEMP()
+        ljmp state_3_sound
+
 
 
 state_3_sound:
