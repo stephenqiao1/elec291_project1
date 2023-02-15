@@ -987,9 +987,9 @@ ret
 
 Load_Defaults1:
     mov Temp_soak, #130 ; Soak Tmp Range is 130-170
-    mov Time_soak, #0x3C ; Range 60-90 seconds
+    mov Time_soak, #60 ; Range 60-90 seconds
     mov Temp_refl, #220 ; Range 220-240
-    mov Time_refl, #0x1E ; Range 30-45 seconds
+    mov Time_refl, #30 ; Range 30-45 seconds
     ret
 
 Load_Defaults2:
@@ -1480,8 +1480,8 @@ state4_beginning:
     Send_Constant_String(#Reflow)
 
     ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
-	mov pwm_ratio+0, #low(200)
-	mov pwm_ratio+1, #high(000)
+	mov pwm_ratio+0, #low(400)
+	mov pwm_ratio+1, #high(400)
 
     ; Produces REFLOW on speaker
     jnb SPAN_ENG, SPANISH4

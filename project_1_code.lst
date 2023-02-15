@@ -2310,9 +2310,9 @@
 1029            987   
 1029            988   Load_Defaults1:
 1029 753482     989       mov Temp_soak, #130 ; Soak Tmp Range is 130-170
-102C 75353C     990       mov Time_soak, #0x3C ; Range 60-90 seconds
+102C 75353C     990       mov Time_soak, #60 ; Range 60-90 seconds
 102F 7536DC     991       mov Temp_refl, #220 ; Range 220-240
-1032 75371E     992       mov Time_refl, #0x1E ; Range 30-45 seconds
+1032 75371E     992       mov Time_refl, #30 ; Range 30-45 seconds
 1035 22         993       ret
 1036            994   
 1036            995   Load_Defaults2:

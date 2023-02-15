@@ -21,7 +21,7 @@ ser.isOpen()
 #Opening up a list to store all the temperature recorded by the 335 sensor
 temp_list = []
 
-xsize=500
+xsize=300
 
 def data_gen():
     t = data_gen.t
