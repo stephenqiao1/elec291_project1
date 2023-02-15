@@ -1,6 +1,6 @@
 Dim WavFileName, StringToConvert 
 Dim oFileStream, oVoice 
- 
+
 'NORMAL for values between 0 and 39 
 'stereo = add 1 
 '16-bit = add 2 
@@ -13,21 +13,23 @@ Dim oFileStream, oVoice
 '32KHz = 28 
 '44KHz = 32 
 '48KHz = 36 
- 
-StringToConvert = InputBox("Enter String to Convert:", "Convert String to WAV") 
+
+StringToConvert = InputBox("Enter String to Convert:", "Convert String to WAV")
 WavFileName = InputBox("Enter Filename to save to:", "Convert String to WAV") 
- 
+
 Const WavFormat= 20 ' 22KHz sampling rate, 8-bit, mono 
 Const SSFMCreateForWrite = 3 ' Creates file even if file exists and so destroys or overwrites the existing file 
- 
+
 Set oFileStream = CreateObject("SAPI.SpFileStream") 
 oFileStream.Format.Type = WavFormat 
 oFileStream.Open WavFileName, SSFMCreateForWrite 
- 
-Set oVoice = CreateObject("SAPI.SpVoice") 
+
+Set oVoice = CreateObject("SAPI.SpVoice")
+oVoice.GetVoices.Count
+oVoice.Voice = oVoice.GetVoices("Language=409;Gender=1")(0) ' set Spanish female voice
 oVoice.Rate = 0 
 oVoice.Volume = 100 
 Set oVoice.AudioOutputStream = oFileStream 
 oVoice.Speak StringToConvert 
- 
+
 oFileStream.Close
