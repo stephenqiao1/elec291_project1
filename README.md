@@ -27,3 +27,16 @@ Possible extra functionalities:
 3. Multiple languages   
 4. Music at the end
 5. Fan for cooling
+
+
+Priorities:
+1. Fan cooling
+2. Save and load profiles
+3. Super Mario :)
+4. Shift Button
+5.  - Use for next state
+6.  - Language
+
+
+Potential Extra Feature:
+ 1. LED
