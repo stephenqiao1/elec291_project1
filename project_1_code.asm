@@ -120,6 +120,7 @@ w:                ds 3
 pwm_ratio:        ds 2
 average_count:    ds 1
 K_or_C:           ds 1
+Profile:          ds 1 ; Select profile1 if equ 0, 2 if equ 1
 
 $NOLIST
 $include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
@@ -232,6 +233,12 @@ Change_8bit_Variable MAC
     skip%Mb:
     inc %1
     skip%Ma:
+    ;cjne Profile, #0, skip%Mc
+    ;lcall Save_Configuration1
+    ;sjmp skip%Md
+    ;skip%Mc:
+    ;lcall Save_Configuration2
+    ;skip%Md:
 ENDMAC
 
 
@@ -1205,11 +1212,33 @@ loadbyte mac
     inc dptr
 endmac
 
-Save_Configuration:
+Save_Configuration1:
     push IE ; Save the current state of bit EA in the stack
     clr EA ; Disable interrupts
     mov FCON, #0x08 ; Page Buffer Mapping Enabled (FPS = 1)
     mov dptr, #0x7f80 ; Last page of flash memory
+    ; Save variables
+    loadbyte(temp_soak) ; @0x7f80
+    loadbyte(time_soak) ; @0x7f81
+    loadbyte(temp_refl) ; @0x7f82
+    loadbyte(time_refl) ; @0x7f83
+    loadbyte(#0x55) ; First key value @0x7f84
+    loadbyte(#0xAA) ; Second key value @0x7f85
+    mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0) 
+    orl EECON, #0b01000000 ; Enable auto-erase on next write sequence  
+    mov FCON, #0x50 ; Write trigger first byte
+    mov FCON, #0xA0 ; Write trigger second byte
+    ; CPU idles until writing of flash completes.
+    mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0)
+    anl EECON, #0b10111111 ; Disable auto-erase
+    pop IE ; Restore the state of bit EA from the stack
+ret
+
+Save_Configuration2:
+    push IE ; Save the current state of bit EA in the stack
+    clr EA ; Disable interrupts
+    mov FCON, #0x08 ; Page Buffer Mapping Enabled (FPS = 1)
+    mov dptr, #0x7f86
     ; Save variables
     loadbyte(temp_soak) ; @0x7f80
     loadbyte(time_soak) ; @0x7f81
@@ -1526,14 +1555,14 @@ main:
     setb EA   ;Enable global enterupt
     clr SPAN_ENG
 
-    lcall Load_Configuration
+    ;lcall Load_Configuration1
 
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
     mov States, #0
 
-    PLAYBACK_TEMP(#0x06, #0xb6, #0xc0, #0x75, #0x30)
+    PLAYBACK_TEMP(#0x19, #0x8e, #0xf8, #0x75, #0x30)
     ;setb FAN
     lcall Animation 
 
@@ -1552,7 +1581,6 @@ state0: ; idle
     lcall CHECK_STEMP
     lcall CHECK_RTIME
     lcall CHECK_RTEMP
-    lcall Save_Configuration
     
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
