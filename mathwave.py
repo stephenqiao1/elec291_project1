@@ -8,7 +8,7 @@ import serial
 
 # configure the serial port
 ser = serial.Serial(
- port='COM5',
+ port='COM6',
  baudrate=115200,
  parity=serial.PARITY_NONE,
  stopbits=serial.STOPBITS_TWO,
@@ -21,7 +21,7 @@ ser.isOpen()
 #Opening up a list to store all the temperature recorded by the 335 sensor
 temp_list = []
 
-xsize=100
+xsize=500
 
 def data_gen():
     t = data_gen.t
@@ -50,11 +50,11 @@ def calculate_avg(temp_list):
     print("The following temperatures were recorded during your session:")
     print(temp_list)
     temp_count = len(temp_list)
-    temp_sum = sum(temp_list)
-    avg_temp = temp_sum/temp_count
+    temp_max = max(temp_list)
+    #avg_temp = temp_sum/temp_count
     print("\n")
-    print("The average temperature:")
-    print(avg_temp)
+    print("The maximum temperature:")
+    print(temp_max)
 
 
 def on_close_figure(event):
@@ -67,7 +67,7 @@ fig = plt.figure()
 fig.canvas.mpl_connect('close_event', on_close_figure)
 ax = fig.add_subplot(111)
 line, = ax.plot([], [], lw=2)
-ax.set_ylim(-10, 50)
+ax.set_ylim(0, 250)
 ax.set_xlim(0, xsize)
 ax.grid()
 xdata, ydata = [], []
