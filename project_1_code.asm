@@ -21,18 +21,17 @@ NEXT_STATE_BUTTON  equ P0.5
 STIME_BUTTON    equ P0.2
 STEMP_BUTTON    equ P0.3
 RTIME_BUTTON    equ P0.4
-RTEMP_BUTTON    equ P0.6
+RTEMP_BUTTON    equ P0.6 ;0.6
 PROFILE_BUTTON  equ P0.0
 
 POWER_BUTTON    equ P4.5
-SHIFT_BUTTON    equ p0.1
+SHIFT_BUTTON    equ P0.1
 
 ;Output Pins
-OVEN_POWER      equ P0.7
 SPEAKER         equ P2.6
 
 PWM_OUTPUT      equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
-FAN             equ P1.1
+SPAN_ENG_BUTTON equ P0.7;0.7
 
 
 ;FLASH pins
@@ -330,20 +329,6 @@ To_Profile1:
 CHECK_PROFILE_END:
 ret
 
-CHECK_K_OR_C:
-
-    jb RTEMP_BUTTON, CHECK_K_OR_C_END ; if button not pressed, stop checking
-	Wait_Milli_Seconds(#50) ; debounce time
-	jb RTEMP_BUTTON, CHECK_K_OR_C_END ; if button not pressed, stop checking
-	jnb RTEMP_BUTTON, $ ; loop while the button is pressed
-    
-    ;mov a, K_or_C
-    ;anl a,
-    ;anl a, #00000001B  ; We need only the two least significant bits
-
-
-CHECK_K_OR_C_END:
-ret
 
 ; Playback MACRO for sound --------------------------------------------------
 
@@ -380,6 +365,7 @@ PLAYBACK_TEMP MAC
     ;clr sound_flag ; sound ends
 ENDMAC
 
+
 PLAYBACK_MUSIC MAC
     ; ***play audio***
     ;cjne sound_flag, #0, $
@@ -413,7 +399,22 @@ PLAYBACK_MUSIC MAC
     ;clr sound_flag ; sound ends
 ENDMAC
 
+CHECK_SPAN_OR_ENGL:
 
+    jb SPAN_ENG_BUTTON, CHECK_SPAN_OR_ENGL_END ; if button not pressed, stop checking
+	Wait_Milli_Seconds(#50) ; debounce time
+	jb SPAN_ENG_BUTTON, CHECK_SPAN_OR_ENGL_END ; if button not pressed, stop checking
+	jnb SPAN_ENG_BUTTON, $ ; loop while the button is pressed
+    
+    PLAYBACK_TEMP(#0x01,#0x93, #0x84, #0x17, #0x70) ;one
+    cpl SPAN_ENG
+    ;mov a, K_or_C
+    ;anl a,
+    ;anl a, #00000001B  ; We need only the two least significant bits
+
+
+CHECK_SPAN_OR_ENGL_END:
+ret
 ;****ENGLISH SOUND FSM--------------------------------------------------------
 
 SOUND_FSM:
@@ -1245,14 +1246,14 @@ Save_Configuration2:
     push IE ; Save the current state of bit EA in the stack
     clr EA ; Disable interrupts
     mov FCON, #0x08 ; Page Buffer Mapping Enabled (FPS = 1)
-    mov dptr, #0x7f86
+    mov dptr, #0x7f00
     ; Save variables
-    loadbyte(temp_soak) ; @0x7f86
-    loadbyte(time_soak) ; @0x7f87
-    loadbyte(temp_refl) ; @0x7f88
-    loadbyte(time_refl) ; @0x7f89
-    loadbyte(#0x44) ; First key value @0x7f8a
-    loadbyte(#0xBB) ; Second key value @0x7f8b
+    loadbyte(temp_soak) ; @0x7f00
+    loadbyte(time_soak) ; @0x7f01
+    loadbyte(temp_refl) ; @0x7f02
+    loadbyte(time_refl) ; @0x7f03
+    loadbyte(#0x44) ; First key value @0x7f04
+    loadbyte(#0xBB) ; Second key value @0x7f05
     mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0) 
     orl EECON, #0b01000000 ; Enable auto-erase on next write sequence  
     mov FCON, #0x50 ; Write trigger first byte
@@ -1285,17 +1286,17 @@ Load_Configuration1:
 ret
 
 Load_Configuration2:
-    mov dptr, #0x7f8a ; First key value location.
-    getbyte(R0) ; 0x7f8a should contain 0x44
+    mov dptr, #0x7f04 ; First key value location.
+    getbyte(R0) ; 0x7f04 should contain 0x44
     cjne R0, #0x44, Load_Defaults2
-    getbyte(R0) ; 0x7f8b should contain 0xBB
+    getbyte(R0) ; 0x7f05 should contain 0xBB
     cjne R0, #0xBB, Load_Defaults2
 ; Keys are good.  Get stored values.
-    mov dptr, #0x7f86
-    getbyte(Temp_soak) ; 0x7f86
-    getbyte(Time_soak) ; 0x7f87
-    getbyte(Temp_refl) ; 0x7f88
-    getbyte(Time_refl) ; 0x7f89
+    mov dptr, #0x7f00
+    getbyte(Temp_soak) ; 0x7f00
+    getbyte(Time_soak) ; 0x7f01
+    getbyte(Temp_refl) ; 0x7f02
+    getbyte(Time_refl) ; 0x7f03
 ret
 
 Load_Defaults1:
@@ -1306,11 +1307,11 @@ Load_Defaults1:
     ret
 
 Load_Defaults2:
-    mov Temp_soak, #150 ; Soak Tmp Range is 130-170
+    mov Temp_soak, #140 ; Soak Tmp Range is 130-170
     mov Time_soak, #75 ; Range 60-90 seconds
     mov Temp_refl, #230 ; Range 220-240
     mov Time_refl, #35 ; Range 30-45 seconds
-    ret 
+    ret
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;off state
 
@@ -1577,11 +1578,12 @@ main:
     lcall LCD_4BIT
     lcall InitSerialPort
     lcall INI_PLAYBACK_TEMP
+    ;orl AUXR, #0x01 ; pin 4.4
     ; In case you decide to use the pins of P0, configure the port in bidirectional mode. Can be ignored
     mov P0M0, #0
     mov P0M1, #0
     setb EA   ;Enable global enterupt
-    clr SPAN_ENG
+    setb SPAN_ENG ; setb for english, clr for spanish
 
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
@@ -1608,6 +1610,8 @@ state0: ; idle
     lcall CHECK_RTIME
     lcall CHECK_RTEMP
     lcall CHECK_PROFILE
+
+    lcall CHECK_SPAN_OR_ENGL
     
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
@@ -1715,6 +1719,7 @@ state2:
     ;Update Time and Temp
     lcall Update_Display
     lcall Average_Temp
+    ;lcall CHECK_SPAN_OR_ENGL
 
     ;jb SPAN_ENG, SPANISH2
     lcall SOUND_FSM
@@ -1756,7 +1761,7 @@ state3:
     ;check power on
     lcall CHECK_POWER
     lcall Average_Temp
-    
+    ;lcall CHECK_SPAN_OR_ENGL
     
     ;Update Time and Temp
     lcall Update_Display
@@ -1803,6 +1808,7 @@ state4:
     ;Update Time and Temp
     lcall Update_Display
     lcall Average_Temp
+    ;lcall CHECK_SPAN_OR_ENGL
    ;jb SPAN_ENG, SPANISH4
     lcall SOUND_FSM
     sjmp Check_Temp_done4
@@ -1824,7 +1830,7 @@ state4_done:
 
 ; cooling
 state5_beginning: ; turn oven off
-    clr OVEN_POWER
+    ;clr OVEN_POWER
 
 ;***clear the screen and set new display***
     lcall Initialize_State_Display
@@ -1840,7 +1846,7 @@ state5_beginning: ; turn oven off
     sjmp state5
 SPANISH5:
     PLAYBACK_TEMP(#0x19, #0xf0, #0xa0, #0xea, #0x60)
-    cpl FAN
+    ;cpl FAN
 
 state5:
     ;check power on
@@ -1877,7 +1883,7 @@ state5_done:
     lcall Wait_One_Second
     mov State_time, #0
     mov States, #0
-    setb FAN
+    ;setb FAN
     ljmp main
 
 END
