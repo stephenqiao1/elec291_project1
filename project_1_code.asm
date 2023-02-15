@@ -22,6 +22,7 @@ STIME_BUTTON    equ P0.2
 STEMP_BUTTON    equ P0.3
 RTIME_BUTTON    equ P0.4
 RTEMP_BUTTON    equ P0.6
+SPAN_ENGL_BUTTON equ P0.0
 
 POWER_BUTTON    equ P4.5
 SHIFT_BUTTON    equ p0.1
@@ -30,7 +31,8 @@ SHIFT_BUTTON    equ p0.1
 OVEN_POWER      equ P0.7
 SPEAKER         equ P2.6
 
-PWM_OUTPUT    equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
+PWM_OUTPUT      equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
+FAN             equ P1.1
 
 
 ;FLASH pins
@@ -136,6 +138,7 @@ one_seconds_flag:  dbit 1
 five_seconds_flag: dbit 1
 enable_clk:        dbit 1
 mf:                dbit 1
+SPAN_ENG:          dbit 1
 ;sound_flag: dbit 1
 
 cseg
@@ -231,6 +234,8 @@ Change_8bit_Variable MAC
     skip%Ma:
 ENDMAC
 
+
+
 ;Change_8bit_Variable(MY_VARIABLE_BUTTON, my_variable, loop_c)
 ;    Set_Cursor(2, 14)
 ;    mov a, my_variable
@@ -291,7 +296,6 @@ CHECK_RTEMP_END:
 ret
 
 CHECK_POWER:
-
     jb POWER_BUTTON, CHECK_POWER_END ; if button not pressed, stop checking
 	Wait_Milli_Seconds(#50) ; debounce time
 	jb POWER_BUTTON, CHECK_POWER_END ; if button not pressed, stop checking
@@ -299,8 +303,16 @@ CHECK_POWER:
     mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
     lcall OFF_STATE
-
 CHECK_POWER_END:
+ret
+
+CHECK_SPAN_OR_ENGL:
+    jb SPAN_ENGL_BUTTON, CHECK_SPAN_OR_ENGL_END
+    Wait_Milli_Seconds(#50) ; de-bounce
+    jb SPAN_ENGL_BUTTON, CHECK_SPAN_OR_ENGL_END
+    jnb SPAN_ENGL_BUTTON, $
+    cpl SPAN_ENG
+CHECK_SPAN_OR_ENGL_END:
 ret
 
 CHECK_K_OR_C:
@@ -354,9 +366,41 @@ PLAYBACK_TEMP MAC
     ;clr sound_flag ; sound ends
 ENDMAC
 
+PLAYBACK_MUSIC MAC
+    ; ***play audio***
+    ;cjne sound_flag, #0, $
+    
+    clr TR1 ; Stop Timer 1 ISR from playing previous request
+    setb FLASH_CE
+    ;setb sound_flag ; sound starts
+    clr SPEAKER ; Turn off speaker
+    clr FLASH_CE ; Enable SPI Flash
+    mov a, #READ_BYTES
+    lcall Send_SPI
+    ; Set the initial position in memory where to start playing
+    
+    mov a, %0 ; change initial position
+    lcall Send_SPI
+    mov a, %1 ; next memory position
+    lcall Send_SPI
+    mov a, %2 ; next memory position
+    lcall Send_SPI
+    mov a, %0 ; request first byte to send to DAC
+    lcall Send_SPI
+    
+    ; How many bytes to play?
+    mov w+2, #0x02 ; Load the high byte of the number of bytes to play
+    mov w+1, %3 ; Load the middle byte of the number of bytes to play
+    mov w+0, %4 ; Load the low byte of the number of bytes to play
+    
+    
+    setb SPEAKER ;Turn on speaker
+    setb TR1 ;Start playback by enabling Timer1
+    ;clr sound_flag ; sound ends
+ENDMAC
 
 
-;**SOUND STUFF---------------------------------------------------------------
+;****ENGLISH SOUND FSM--------------------------------------------------------
 
 SOUND_FSM:
 state_0_sound:
@@ -535,22 +579,6 @@ state_5_sound:
         play_90:
             PLAYBACK_TEMP(#0x04,#0xed,#0xb8, #0x1f,#0x40)
 
-    ;mov a, Temp_oven
-    ;mov b, #100 
-    ;div ab
-    ;mov a, b
-    ;mov b, #10
-    ;div ab
-    ;mov a, b
-    ;jnz state_6_sound_hop1
-    
-    ;jz play_sound
-    
-    ;lcall Wait_One_Second
-    ;lcall Wait_One_Second
-    ;lcall Wait_One_Second
-
-
     state_6_sound_hop1:
         ljmp state_6_sound
         
@@ -682,6 +710,319 @@ state_7_sound:
 state_8_sound:
 ; go to state_0_sound
     ljmp Sound_ret
+
+;****SPANISH SOUND FSM--------------------------------------------------------
+SOUND_FSM_S:
+state_0_sound_S:
+;check if 5 seconds has passed, if yes go to state 1, if no exit function 
+    jnb five_seconds_flag, Sound_ret_S
+    clr five_seconds_flag
+    sjmp state_1_sound_S
+Sound_ret_S:
+    ret
+
+state_1_sound_S:
+; check if temp is greater than or equal to 100, if yes go to state 2
+; check if temp is less than 100, if yes go to state 4
+    mov a, Temp_oven
+    subb a, #100
+    jnc state_2_sound_hop_S
+    jc state_4_sound_hop_S
+
+    state_2_sound_hop_S:
+        sjmp state_2_sound_S
+
+    state_4_sound_hop_S:
+        ljmp state_4_sound_S
+
+state_2_sound_S:
+;divide temp by 100, if it is 1 play sound: "100", if it is 2 play sound: "200"
+; go to state_3_sound
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    subb a, #1
+    jz play_sound_100_S
+
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    subb a, #2
+    jz play_sound_200_S
+   
+    play_sound_100_S: 
+        PLAYBACK_TEMP(#0x01,#0x93, #0x84, #0x36, #0xb0) ;one
+        PLAYBACK_TEMP(#0x05,#0x09,#0x10, #0x27,#0x10) ;hundred
+        ljmp state_3_sound_S
+
+    play_sound_200_S:
+        PLAYBACK_TEMP(#0x01, #0xc7, #0x14, #0x13, #0x88) ;two
+        PLAYBACK_TEMP(#0x05,#0x09,#0x10, #0x27,#0x10) ;hundred
+        ljmp state_3_sound_S
+
+state_3_sound_S:
+; check remainder of temp, if it is 0, exit
+; if not 0, go to state_4_sound
+
+
+    mov b, #100
+    mov a, Temp_oven
+    subb a, b
+    mov a, b
+    jz state_3_sound_hop_S
+    
+    mov b, #200
+    mov a, Temp_oven
+    subb a, b
+    mov a, b
+    jz state_3_sound_hop_S
+
+    sjmp state_4_sound_S
+
+    state_3_sound_hop_S:
+        ljmp Sound_ret_S
+
+state_4_sound_S:
+; if T % 100 greater or equal to 20, go to state_5_sound,
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    ;mov R0, b
+    mov a, b 
+
+
+    subb a, #20
+    jnc state_5_sound_S
+    jz state_5_sound_S
+    clr a
+; if T % 100 is less than 10, go to state_6_sound
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    mov a, b
+    subb a, #10
+    jc state_6_sound_hop0_S
+    
+    ;mov a, b
+    
+    ; ubb a, #0
+    ;jc state_6_sound_hop0
+    ;clr a
+; if T % 100 is greater than or equal to 10 and less than 20, go to state_7_sound
+
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    mov a, b
+    subb a, #10
+    jz and_branch_S
+
+    and_branch_S:
+        mov a, b
+        subb a, #20
+        jc state_7_sound_hop0_S
+    
+    state_7_sound_hop0_S:
+        ljmp state_7_sound_S
+
+    state_6_sound_hop0_S:
+        ljmp state_6_sound_S
+    
+
+state_5_sound_S:
+; play number from 20 to 90 in decades (20, 30, 40, 50, 60, 70, 80, 90), based off remainder from temp divided by 100
+; if (T % 100) % 10 is not equal to 0, go to state_6_sound
+; if (T % 100) % 10 is equal to 0, go to state_8_sound
+
+    play_sound_S:
+        ;ljmp PLAYBACK_TEMP
+        mov a, Temp_oven
+        mov b, #100
+        div ab
+        mov a, b
+        mov b, #10
+        div ab
+        cjne a, #2, play_30_S
+        ;mov    
+
+        play_20_S:
+            PLAYBACK_TEMP(#0x03,#0xef,#0xd0, #0x27,#0x10)
+            ;lcall Wait_One_Second
+            ljmp state_6_sound_hop1_S
+
+        play_30_S:
+            
+            cjne a, #3, play_40_S   
+            PLAYBACK_TEMP(#0x04,#0x16,#0xe0, #0x23,#0x28)
+            ljmp state_6_sound_hop1_S
+
+        play_40_S:
+            
+            cjne a, #4, play_50_S 
+            PLAYBACK_TEMP(#0x04,#0x3d,#0xf0, #0x1f,#0x40)
+            ljmp state_6_sound_hop1_S
+
+        play_50_S:
+           
+            cjne a, #5, play_60_S  
+            PLAYBACK_TEMP(#0x04,#0x51,#0x78, #0x23,#0x28)
+            ljmp state_6_sound_hop1_S
+
+        play_60_S:
+            
+            cjne a, #6, play_70_S  
+            PLAYBACK_TEMP(#0x04,#0x74,#0xa0, #0x27,#0x10)
+            ljmp state_6_sound_hop1_S
+
+        play_70_S:
+           
+            cjne a, #7, play_80_S  
+            PLAYBACK_TEMP(#0x04,#0x9b,#0xb0, #0x32,#0xc8)
+            ljmp state_6_sound_hop1_S
+
+        play_80_S:
+            
+            cjne a, #8, play_90_S  
+            PLAYBACK_TEMP(#0x04,#0xc6,#0xa8, #0x23,#0x28)
+            ljmp state_6_sound_hop1_S
+
+        play_90_S:
+            PLAYBACK_TEMP(#0x04,#0xed,#0xb8, #0x1f,#0x40)
+
+
+
+
+    state_6_sound_hop1_S:
+        ljmp state_6_sound_S
+        
+    ;state_8_hop0:
+        ;ljmp state_6_sound ;state_8_sound
+
+
+state_6_sound_S:
+; play 1 - 9
+    ;ljmp PLAYBACK_TEMP
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    mov a, b
+    mov b, #10
+    div ab
+    mov a, b
+    
+    cjne a, #0x00, play_1_S
+    ljmp state_8_hop1_S
+
+    play_1_S:
+        cjne a, #0x01, play_2_S
+        PLAYBACK_TEMP(#0x01,#0x93,#0x84, #0x36,#0xb0) 
+        ljmp state_8_hop1_S
+
+    play_2_S:
+        cjne a, #0x02, play_3_S
+        PLAYBACK_TEMP(#0x01,#0xc7,#0x14, #0x13,#0x88)
+        ljmp state_8_hop1_S
+
+    play_3_S:
+        cjne a, #0x03, play_4_S
+        PLAYBACK_TEMP(#0x01,#0xd6,#0x68, #0x23,#0x28)
+        ljmp state_8_hop1_S
+
+    play_4_S:
+        cjne a, #0x04, play_5_S
+        PLAYBACK_TEMP(#0x01,#0xf4,#0x00, #0x1b,#0x58)
+        ljmp state_8_hop1_S
+
+    play_5_S:
+        cjne a, #0x05, play_6_S
+        PLAYBACK_TEMP(#0x02,#0x07,#0x88, #0x1b,#0x58)
+        ljmp state_8_hop1_S
+
+    play_6_S:
+        cjne a, #0x06, play_7_S
+        PLAYBACK_TEMP(#0x02,#0x26,#0xc8, #0x1f,#0x40)
+        ljmp state_8_hop1_S
+
+    play_7_S:
+        cjne a, #0x07, play_8_S
+        PLAYBACK_TEMP(#0x02,#0x36,#0x68, #0x23,#0x28)
+        ljmp state_8_hop1_S
+
+    play_8_S:
+        cjne a, #0x08, play_9_S
+        PLAYBACK_TEMP(#0x02,#0x57,#0x9c, #0x1b,#0x58)
+        ljmp state_8_hop1_S
+
+    play_9_S:
+        PLAYBACK_TEMP(#0x02,#0x69,#0x30, #0x1f,#0x40)
+
+state_8_hop1_S:
+; go to state_8_sound
+    ljmp state_8_sound_S
+
+
+state_7_sound_S:
+; play 10 - 19
+    ;ljmp PLAYBACK_TEMP
+    mov b, #100
+    mov a, Temp_oven
+    div ab
+    mov a, b
+    cjne a, #0x0a, play_11_S
+    
+    PLAYBACK_TEMP(#0x02,#0x84,#0x88, #0x17,#0x70)
+    ljmp state_8_hop2_S
+
+    play_11_S:
+        cjne a, #0x0b, play_12_S
+        PLAYBACK_TEMP(#0x02,#0x9b,#0xf8, #0x1f,#0x40)
+        ljmp state_8_hop2_S
+
+    play_12_S:
+        cjne a, #0x0c, play_13_S
+        PLAYBACK_TEMP(#0x02,#0xb7,#0x50, #0x1f,#0x40)
+        ljmp state_8_hop2_S
+
+    play_13_S:
+        cjne a, #0x0d, play_14_S
+        PLAYBACK_TEMP(#0x02,#0xce,#0xc0, #0x2e,#0xe0)
+        ljmp state_8_hop2_S
+
+    play_14_S:
+        cjne a, #0x0e, play_15_S
+        PLAYBACK_TEMP(#0x02,#0xf5,#0xd0, #0x36,#0xb0)
+        ljmp state_8_hop2_S
+
+    play_15_S:
+        cjne a, #0x0f, play_16_S
+        PLAYBACK_TEMP(#0x03,#0x28,#0x98, #0x23,#0x28)
+        ljmp state_8_hop2_S
+
+    play_16_S:
+        cjne a, #0x10, play_17_S
+        PLAYBACK_TEMP(#0x03,#0x47,#0xd8, #0x32,#0xc8)
+        ljmp state_8_hop2_S
+
+    play_17_S:
+        cjne a, #0x11, play_18_S
+        PLAYBACK_TEMP(#0x03,#0x76,#0xb8, #0x2e,#0x20)
+        ljmp state_8_hop2_S
+
+    play_18_S:
+        cjne a, #0x12, play_19_S
+        PLAYBACK_TEMP(#0x03,#0xa1,#0xb0, #0x27,#0x10)
+        ljmp state_8_hop2_S
+
+    play_19_S:
+        PLAYBACK_TEMP(#0x03,#0xc8,#0xc0, #0x27,#0x10)
+
+    state_8_hop2_S:
+    ; go to state_8_sound
+        ljmp state_8_sound_S
+
+state_8_sound_S:
+; go to state_0_sound
+    ljmp Sound_ret_S
 
 
 
@@ -1183,6 +1524,7 @@ main:
     mov P0M0, #0
     mov P0M1, #0
     setb EA   ;Enable global enterupt
+    clr SPAN_ENG
 
     lcall Load_Configuration
 
@@ -1190,16 +1532,16 @@ main:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
     mov States, #0
-    lcall Animation
-    
-    
-state0: ; idle
-    ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
-	;mov pwm_ratio+0, #low(0)
-	;mov pwm_ratio+1, #high(0)
-    ;mov States, #0
 
+    PLAYBACK_TEMP(#0x06, #0xb6, #0xc0, #0x75, #0x30)
+    ;setb FAN
+    lcall Animation 
+
+    
+state0: ; idle 
 ;***initial parameters displayed***
+    mov pwm_ratio+0, #low(0)
+	mov pwm_ratio+1, #high(0)
     
     ;Displays Soak Temp and Time
     lcall State0_display
@@ -1212,9 +1554,6 @@ state0: ; idle
     lcall CHECK_RTEMP
     lcall Save_Configuration
     
-    ;lcall Check_Temp
-    ;lcall PLAYBACK_TEMP
-
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
 	jb NEXT_STATE_BUTTON, state0 ; if button not pressed, loop
@@ -1223,11 +1562,12 @@ state0_done:
     mov States, #1
     mov State_time, #0
     setb enable_clk
-   
+    PLAYBACK_MUSIC(#0x18, #0xcb, #0xa8, #0x0f, #0x58)
+    lcall Wait_One_Second
      
 
 state1_beginning:
-    
+
     ;Start Run Time
     mov Run_time_seconds, #0 ; time starts at 0:00
     mov Run_time_minutes, #0
@@ -1242,6 +1582,7 @@ state1_beginning:
 	mov pwm_ratio+0, #low(1000)
 	mov pwm_ratio+1, #high(1000)
     PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
+    ;mov FAN, #1
     sjmp state1
     
 main_1:
@@ -1255,8 +1596,14 @@ state1: ; ramp to soak
     ;Update Time and Temp
     lcall Update_Display
     lcall Average_Temp
+    lcall CHECK_SPAN_OR_ENGL
     
+    ;Decides if going to Spanish or English
+    jb SPAN_ENG, SPANISH1
     lcall SOUND_FSM
+    sjmp Check_Temp_done1
+SPANISH1:
+    lcall SOUND_FSM_S
 
 Check_Temp_done1:
 
@@ -1284,6 +1631,7 @@ Check_state1_safety:       ; safety
 	;jnb NEXT_STATE_BUTTON, $ 
 
 state1_done:
+    ;mov FAN, #0
     mov States, #2
 
 ; preheat/soak
@@ -1307,24 +1655,19 @@ state2:
     lcall Update_Display
     lcall Average_Temp
 
+    jb SPAN_ENG, SPANISH2
     lcall SOUND_FSM
+    sjmp Check_Temp_done2
+SPANISH2:
+    lcall SOUND_FSM_S
     
     ; loop back to state2 if run time is less than soak time. If greater than jump to state3 cuz of overflow of time
-     
+Check_Temp_done2:     
     mov a, State_time
     subb a, Time_soak
     jnc state2_done
     jc state2
 
-
-;*Checking moving to states with buttons---- 
-;*Will remove after proper temperature reading----
-
-    ;jb NEXT_STATE_BUTTON, state2
-    ;Wait_Milli_Seconds(#50) ; debounce time
-	;jb NEXT_STATE_BUTTON, state2 ; if button not pressed, loop
-	;jnb NEXT_STATE_BUTTON, $ 
-    
 state2_done:
     mov State_time, #3
 
@@ -1352,20 +1695,20 @@ state3:
     
     ;Update Time and Temp
     lcall Update_Display
+    jb SPAN_ENG, SPANISH3
     lcall SOUND_FSM
-
+    sjmp Check_Temp_done3
+SPANISH3:
+    lcall SOUND_FSM_S
     
+Check_Temp_done3:  
+ 
     mov a, Temp_oven           
     subb a, Temp_refl
     jnc state3_done    ; if greater, jump to state 4
     jz state3_done ; if equal to, jump to state 4
     jc state3 ; if less than, go back to state3
-    
-    ;jb NEXT_STATE_BUTTON, state3
-    ;Wait_Milli_Seconds(#50) ; debounce time
-	;jb NEXT_STATE_BUTTON, state3 ; if button not pressed, loop
-	;jnb NEXT_STATE_BUTTON, $
-
+ 
 state3_done:
     mov State_time, #4
 
@@ -1392,22 +1735,19 @@ state4:
     ;Update Time and Temp
     lcall Update_Display
     lcall Average_Temp
+   jb SPAN_ENG, SPANISH4
     lcall SOUND_FSM
-
+    sjmp Check_Temp_done4
+SPANISH4:
+    lcall SOUND_FSM_S
     
+Check_Temp_done4:  
+   
     ; loop back to state2 if run time is less than soak time
     mov a, State_time
     subb a, Time_refl
     jnc state4_done
     jc state4
-
-    ;*Checking moving to states with buttons---- 
-;*Will remove after proper temperature reading----
-
-    ;jb NEXT_STATE_BUTTON, state4
-    ;Wait_Milli_Seconds(#50) ; debounce time
-	;jb NEXT_STATE_BUTTON, state4 ; if button not pressed, loop
-	;jnb NEXT_STATE_BUTTON, $ 
 
 state4_done: 
     mov State_time, #0
@@ -1428,6 +1768,7 @@ state5_beginning: ; turn oven off
 
     ; Produces COOLING on speaker
     PLAYBACK_TEMP(#0x01,#0x48,#0x9a, #0x6b,#0x6c)
+    cpl FAN
 
 state5:
     ;check power on
@@ -1437,7 +1778,13 @@ state5:
     lcall Update_Display
     lcall Average_Temp
 
+    jb SPAN_ENG, SPANISH5
     lcall SOUND_FSM
+    sjmp Check_Temp_done5
+SPANISH5:
+    lcall SOUND_FSM_S
+    
+Check_Temp_done5:  
 
     mov a, Temp_oven
     subb a, #60
@@ -1454,8 +1801,11 @@ state5:
 	;jnb NEXT_STATE_BUTTON, $ 
 
 state5_done:
+    PLAYBACK_MUSIC(#0x16, #0xbc, #0x50, #0x0f, #0x58)
+    lcall Wait_One_Second
     mov State_time, #0
     mov States, #0
+    setb FAN
     ljmp main
 
 END
