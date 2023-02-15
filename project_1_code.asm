@@ -127,9 +127,9 @@ $NOLIST
 $include(math32.inc)
 $LIST
 
-$NOLIST
-$INCLUDE(sound_for_project1_index.asm)
-$LIST
+;$NOLIST
+;$INCLUDE(sound_for_project1_index.asm)
+;$LIST
 
 bseg
 one_seconds_flag:  dbit 1
