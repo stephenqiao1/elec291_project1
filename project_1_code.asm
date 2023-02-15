@@ -22,7 +22,7 @@ STIME_BUTTON    equ P0.2
 STEMP_BUTTON    equ P0.3
 RTIME_BUTTON    equ P0.4
 RTEMP_BUTTON    equ P0.6
-SPAN_ENGL_BUTTON equ P0.0
+PROFILE_BUTTON  equ P0.0
 
 POWER_BUTTON    equ P4.5
 SHIFT_BUTTON    equ p0.1
@@ -233,12 +233,13 @@ Change_8bit_Variable MAC
     skip%Mb:
     inc %1
     skip%Ma:
-    ;cjne Profile, #0, skip%Mc
-    ;lcall Save_Configuration1
-    ;sjmp skip%Md
-    ;skip%Mc:
-    ;lcall Save_Configuration2
-    ;skip%Md:
+    mov a, Profile
+    cjne a, #0, skip%Mc
+    lcall Save_Configuration1
+    sjmp skip%Md
+    skip%Mc:
+    lcall Save_Configuration2
+    skip%Md:
 ENDMAC
 
 
@@ -313,13 +314,20 @@ CHECK_POWER:
 CHECK_POWER_END:
 ret
 
-CHECK_SPAN_OR_ENGL:
-    jb SPAN_ENGL_BUTTON, CHECK_SPAN_OR_ENGL_END
+CHECK_PROFILE:
+    jb PROFILE_BUTTON, CHECK_PROFILE_END
     Wait_Milli_Seconds(#50) ; de-bounce
-    jb SPAN_ENGL_BUTTON, CHECK_SPAN_OR_ENGL_END
-    jnb SPAN_ENGL_BUTTON, $
-    cpl SPAN_ENG
-CHECK_SPAN_OR_ENGL_END:
+    jb PROFILE_BUTTON, CHECK_PROFILE_END
+    jnb PROFILE_BUTTON, $
+    mov a, Profile
+    cjne a, #0, To_Profile1
+    lcall Load_Configuration2
+    mov Profile, #1
+    sjmp CHECK_PROFILE_END
+To_Profile1:
+    lcall Load_Configuration1
+    mov Profile, #0
+CHECK_PROFILE_END:
 ret
 
 CHECK_K_OR_C:
@@ -342,7 +350,6 @@ ret
 PLAYBACK_TEMP MAC
     ; ***play audio***
     ;cjne sound_flag, #0, $
-    
     lcall Wait_Half_Second
     clr TR1 ; Stop Timer 1 ISR from playing previous request
     setb FLASH_CE
@@ -1240,12 +1247,12 @@ Save_Configuration2:
     mov FCON, #0x08 ; Page Buffer Mapping Enabled (FPS = 1)
     mov dptr, #0x7f86
     ; Save variables
-    loadbyte(temp_soak) ; @0x7f80
-    loadbyte(time_soak) ; @0x7f81
-    loadbyte(temp_refl) ; @0x7f82
-    loadbyte(time_refl) ; @0x7f83
-    loadbyte(#0x55) ; First key value @0x7f84
-    loadbyte(#0xAA) ; Second key value @0x7f85
+    loadbyte(temp_soak) ; @0x7f86
+    loadbyte(time_soak) ; @0x7f87
+    loadbyte(temp_refl) ; @0x7f88
+    loadbyte(time_refl) ; @0x7f89
+    loadbyte(#0x44) ; First key value @0x7f8a
+    loadbyte(#0xBB) ; Second key value @0x7f8b
     mov FCON, #0x00 ; Page Buffer Mapping Disabled (FPS = 0) 
     orl EECON, #0b01000000 ; Enable auto-erase on next write sequence  
     mov FCON, #0x50 ; Write trigger first byte
@@ -1263,12 +1270,12 @@ getbyte mac
     inc dptr
 endmac
 
-Load_Configuration:
+Load_Configuration1:
     mov dptr, #0x7f84 ; First key value location.
     getbyte(R0) ; 0x7f84 should contain 0x55
-    cjne R0, #0x55, Load_Defaults
+    cjne R0, #0x55, Load_Defaults1
     getbyte(R0) ; 0x7f85 should contain 0xAA
-    cjne R0, #0xAA, Load_Defaults
+    cjne R0, #0xAA, Load_Defaults1
 ; Keys are good.  Get stored values.
     mov dptr, #0x7f80
     getbyte(Temp_soak) ; 0x7f80
@@ -1277,11 +1284,32 @@ Load_Configuration:
     getbyte(Time_refl) ; 0x7f83
 ret
 
-Load_Defaults:
+Load_Configuration2:
+    mov dptr, #0x7f8a ; First key value location.
+    getbyte(R0) ; 0x7f8a should contain 0x44
+    cjne R0, #0x44, Load_Defaults2
+    getbyte(R0) ; 0x7f8b should contain 0xBB
+    cjne R0, #0xBB, Load_Defaults2
+; Keys are good.  Get stored values.
+    mov dptr, #0x7f86
+    getbyte(Temp_soak) ; 0x7f86
+    getbyte(Time_soak) ; 0x7f87
+    getbyte(Temp_refl) ; 0x7f88
+    getbyte(Time_refl) ; 0x7f89
+ret
+
+Load_Defaults1:
     mov Temp_soak, #130 ; Soak Tmp Range is 130-170
     mov Time_soak, #0x3C ; Range 60-90 seconds
     mov Temp_refl, #220 ; Range 220-240
     mov Time_refl, #0x1E ; Range 30-45 seconds
+    ret
+
+Load_Defaults2:
+    mov Temp_soak, #150 ; Soak Tmp Range is 130-170
+    mov Time_soak, #75 ; Range 60-90 seconds
+    mov Temp_refl, #230 ; Range 220-240
+    mov Time_refl, #35 ; Range 30-45 seconds
     ret 
 ;-------------------------------------------------------------------------------------------------------------------------------
 ;off state
@@ -1555,18 +1583,16 @@ main:
     setb EA   ;Enable global enterupt
     clr SPAN_ENG
 
-    ;lcall Load_Configuration1
-
     ;Set the default pwm output ratio to 0%.  That is 0ms of every second:
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
     mov States, #0
-
-    PLAYBACK_TEMP(#0x19, #0x8e, #0xf8, #0x75, #0x30)
+    mov Profile, #0
+    lcall Load_Configuration1
     ;setb FAN
     lcall Animation 
 
-    
+
 state0: ; idle 
 ;***initial parameters displayed***
     mov pwm_ratio+0, #low(0)
@@ -1581,6 +1607,7 @@ state0: ; idle
     lcall CHECK_STEMP
     lcall CHECK_RTIME
     lcall CHECK_RTEMP
+    lcall CHECK_PROFILE
     
     jb NEXT_STATE_BUTTON, state0
     Wait_Milli_Seconds(#50) ; debounce time
@@ -1609,7 +1636,12 @@ state1_beginning:
     ;Set the default pwm output ratio to 100%.  That is 1000ms of every second:
 	mov pwm_ratio+0, #low(1000)
 	mov pwm_ratio+1, #high(1000)
+    jnb SPAN_ENG, SPANISH1
     PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
+    ;lcall Wait_One_Second
+    sjmp state1
+SPANISH1:
+    PLAYBACK_TEMP(#0x05, #0x57, #0x30, #0xea,#0x60)
     ;mov FAN, #1
     sjmp state1
     
@@ -1617,21 +1649,18 @@ main_1:
 	ljmp main
 
 state1: ; ramp to soak
-    
-    ;PLAYBACK_TEMP(#0x00,#0x00,#0x2d, #0x4e,#0x20)
     ;check power on
     lcall CHECK_POWER
     ;Update Time and Temp
     lcall Update_Display
     lcall Average_Temp
-    lcall CHECK_SPAN_OR_ENGL
+    ;lcall CHECK_SPAN_OR_ENGL
     
     ;Decides if going to Spanish or English
-    jb SPAN_ENG, SPANISH1
+    ;jb SPAN_ENG, SPANISH1
     lcall SOUND_FSM
-    sjmp Check_Temp_done1
-SPANISH1:
-    lcall SOUND_FSM_S
+;SPANISH1:
+    ;lcall SOUND_FSM_S
 
 Check_Temp_done1:
 
@@ -1674,7 +1703,11 @@ state2_beginning:
 	mov pwm_ratio+0, #low(200)
 	mov pwm_ratio+1, #high(000)
     ; Produces SOAK on speaker
+    jnb SPAN_ENG, SPANISH2
     PLAYBACK_TEMP(#0x00,#0x44,#0xdd, #0x4e,#0x20)
+    sjmp state2
+SPANISH2:
+    PLAYBACK_TEMP(#0x06, #0x1a, #0x80, #0x9c,#0x40)
 
 state2:
     ;check power on
@@ -1683,11 +1716,11 @@ state2:
     lcall Update_Display
     lcall Average_Temp
 
-    jb SPAN_ENG, SPANISH2
+    ;jb SPAN_ENG, SPANISH2
     lcall SOUND_FSM
     sjmp Check_Temp_done2
-SPANISH2:
-    lcall SOUND_FSM_S
+;SPANISH2:
+    ;lcall SOUND_FSM_S
     
     ; loop back to state2 if run time is less than soak time. If greater than jump to state3 cuz of overflow of time
 Check_Temp_done2:     
@@ -1713,7 +1746,11 @@ state3_beginning:
 	mov pwm_ratio+1, #high(1000)
 
     ; Produces RAMP TO PEAK on speaker
+    jnb SPAN_ENG, SPANISH3
     PLAYBACK_TEMP(#0x00,#0x8b,#0xca, #0x75,#0x30)
+    sjmp state3
+SPANISH3:
+    PLAYBACK_TEMP(#0x06,#0xb6,#0xc0, #0x75, #0x30)
 
 state3: 
     ;check power on
@@ -1723,11 +1760,11 @@ state3:
     
     ;Update Time and Temp
     lcall Update_Display
-    jb SPAN_ENG, SPANISH3
+    ;jb SPAN_ENG, SPANISH3
     lcall SOUND_FSM
     sjmp Check_Temp_done3
-SPANISH3:
-    lcall SOUND_FSM_S
+;SPANISH3:
+    ;lcall SOUND_FSM_S
     
 Check_Temp_done3:  
  
@@ -1754,8 +1791,11 @@ state4_beginning:
 	mov pwm_ratio+1, #high(000)
 
     ; Produces REFLOW on speaker
+    jnb SPAN_ENG, SPANISH4
     PLAYBACK_TEMP(#0x00,#0xf0,#0x63, #0x59,#0xd8)
-
+    sjmp state4
+SPANISH4:
+    PLAYBACK_TEMP(#0x19,#0x8e,#0xf8, #0x75, #0x30)
 
 state4:
     ;check power on
@@ -1763,11 +1803,11 @@ state4:
     ;Update Time and Temp
     lcall Update_Display
     lcall Average_Temp
-   jb SPAN_ENG, SPANISH4
+   ;jb SPAN_ENG, SPANISH4
     lcall SOUND_FSM
     sjmp Check_Temp_done4
-SPANISH4:
-    lcall SOUND_FSM_S
+;SPANISH4:
+    ;lcall SOUND_FSM_S
     
 Check_Temp_done4:  
    
@@ -1795,7 +1835,11 @@ state5_beginning: ; turn oven off
 	mov pwm_ratio+1, #high(0)
 
     ; Produces COOLING on speaker
+    jnb SPAN_ENG, SPANISH5
     PLAYBACK_TEMP(#0x01,#0x48,#0x9a, #0x6b,#0x6c)
+    sjmp state5
+SPANISH5:
+    PLAYBACK_TEMP(#0x19, #0xf0, #0xa0, #0xea, #0x60)
     cpl FAN
 
 state5:
@@ -1806,11 +1850,11 @@ state5:
     lcall Update_Display
     lcall Average_Temp
 
-    jb SPAN_ENG, SPANISH5
+    ;jb SPAN_ENG, SPANISH5
     lcall SOUND_FSM
     sjmp Check_Temp_done5
-SPANISH5:
-    lcall SOUND_FSM_S
+;SPANISH5:
+    ;lcall SOUND_FSM_S
     
 Check_Temp_done5:  
 
