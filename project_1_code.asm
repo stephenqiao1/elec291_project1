@@ -32,6 +32,7 @@ SPEAKER         equ P2.6
 
 PWM_OUTPUT      equ P1.0 ; Attach an LED (with 1k resistor in series) to P1.0
 SPAN_ENG_BUTTON equ P0.7;0.7
+FAN             equ P1.1
 
 
 ;FLASH pins
@@ -1211,6 +1212,8 @@ Inc_Done:
 	subb a, Count1ms+1
 	; if Count1ms > pwm_ratio  the carry is set.  Just copy the carry to the pwm output pin:
 	mov PWM_OUTPUT, c
+   
+    
 ;**----------------------------------
 	; Check if one second has passed
 	mov a, Count1ms+0
@@ -1276,10 +1279,10 @@ main:
     mov States, #0
     mov Profile, #0
     lcall Load_Configuration1
-    ;setb FAN
+    ;mov FAN, #1
     lcall Animation 
-
-
+    ;ljmp state5_beginning
+    
 state0: ; idle 
 ;***initial parameters displayed***
     mov pwm_ratio+0, #low(0)
@@ -1525,10 +1528,13 @@ state5_beginning: ; turn oven off
 	mov pwm_ratio+0, #low(0)
 	mov pwm_ratio+1, #high(0)
 
+    mov States, #5
+
     ; Produces COOLING on speaker
     jnb SPAN_ENG, SPANISH5
     PLAYBACK_TEMP(#0x01,#0x48,#0x9a, #0x6b,#0x6c)
     sjmp state5
+
 SPANISH5:
     PLAYBACK_TEMP(#0x19, #0xf0, #0xa0, #0xea, #0x60)
     ;cpl FAN
@@ -1540,7 +1546,6 @@ state5:
     ; update display
     lcall Update_Display
     lcall Average_Temp
-
     ;jb SPAN_ENG, SPANISH5
     lcall SOUND_FSM
     sjmp Check_Temp_done5
@@ -1565,6 +1570,10 @@ Check_Temp_done5:
 
 state5_done:
     PLAYBACK_MUSIC(#0x16, #0xbc, #0x50, #0x0f, #0x58)
+    lcall Wait_One_Second
+    lcall Wait_One_Second
+    lcall Wait_One_Second
+    lcall Wait_One_Second
     lcall Wait_One_Second
     mov State_time, #0
     mov States, #0
