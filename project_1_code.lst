@@ -3101,8 +3101,8 @@
 14BA D083      1480            pop dph
 14BC           1481   
 14BC           1482       ;Set the default pwm output ratio to 20%.  That is 200ms of every second:
-14BC 754FC8    1483            mov pwm_ratio+0, #low(200)
-14BF 755000    1484            mov pwm_ratio+1, #high(000)
+14BC 754F90    1483            mov pwm_ratio+0, #low(400)
+14BF 755001    1484            mov pwm_ratio+1, #high(400)
 14C2           1485   
 14C2           1486       ; Produces REFLOW on speaker
 14C2 300433    1487       jnb SPAN_ENG, SPANISH4
